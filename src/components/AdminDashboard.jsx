@@ -70,26 +70,13 @@ export default function AdminDashboard() {
         return
       }
 
-      // Use the custom function for better data retrieval
-      const { data, error } = await supabase
-        .rpc('get_applications_for_admin')
+      // Use the submitted applications function
+      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
 
       if (error) throw error
       
-      // Transform the data to match expected format
-      const transformedData = (data || []).map(app => ({
-        ...app,
-        user_profiles: {
-          first_name: app.user_first_name,
-          last_name: app.user_last_name,
-          email: app.user_email,
-          phone: app.user_phone,
-          company: app.user_company
-        }
-      }))
-      
-      console.log('Fetched applications:', transformedData) // Debug log
-      setApplications(transformedData)
+      console.log('Fetched submitted applications:', data) // Debug log
+      setApplications(data || [])
     } catch (error) {
       console.error('Error fetching applications:', error)
       
@@ -102,7 +89,8 @@ export default function AdminDashboard() {
             *,
             user_profiles(*)
           `)
-          .in('status', ['documents_pending', 'under_review'])
+          .whereNotNull('submitted_at')
+          .in('status', ['documents_pending', 'under_review', 'approved'])
           .order('created_at', { ascending: false })
 
         if (fallbackError) {
@@ -137,26 +125,16 @@ export default function AdminDashboard() {
         return
       }
 
-      // Use the custom function for better data retrieval
-      const { data, error } = await supabase
-        .rpc('get_borrowers_for_admin')
+      // Get approved applications only
+      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
 
       if (error) throw error
       
-      // Transform the data to match expected format
-      const transformedData = (data || []).map(borrower => ({
-        ...borrower,
-        user_profiles: {
-          first_name: borrower.user_first_name,
-          last_name: borrower.user_last_name,
-          email: borrower.user_email,
-          phone: borrower.user_phone,
-          company: borrower.user_company
-        }
-      }))
+      // Filter only approved applications
+      const approvedBorrowers = (data || []).filter(app => app.status === 'approved')
       
-      console.log('Fetched borrowers:', transformedData) // Debug log
-      setBorrowers(transformedData)
+      console.log('Fetched approved borrowers:', approvedBorrowers) // Debug log
+      setBorrowers(approvedBorrowers)
     } catch (error) {
       console.error('Error fetching borrowers:', error)
       
@@ -170,6 +148,7 @@ export default function AdminDashboard() {
             user_profiles(*)
           `)
           .eq('status', 'approved')
+          .whereNotNull('submitted_at')
           .order('updated_at', { ascending: false })
 
         if (fallbackError) {
@@ -278,14 +257,10 @@ export default function AdminDashboard() {
 
   const handleApproveApplication = async (applicationId) => {
     try {
-      const { error } = await supabase
-        .from('application_status')
-        .update({ 
-          status: 'approved',
-          updated_at: new Date().toISOString(),
-          updated_by: user.id
-        })
-        .eq('id', applicationId)
+      const { data, error } = await supabase.rpc('approve_application', {
+        p_application_id: applicationId,
+        p_admin_notes: 'Application approved by admin'
+      })
 
       if (error) throw error
       
@@ -567,122 +542,134 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No pending applications</h3>
-          <p className="mt-1 text-sm text-gray-500">Applications will appear here when submitted by borrowers.</p>
-          <div className="mt-4 text-xs text-gray-400">
-            Looking for applications with status: documents_pending, under_review
-          </div>
+          <p className="mt-1 text-sm text-gray-500">Submitted applications will appear here when borrowers complete their submissions.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Pending Applications ({applications.length})</h3>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Applicant
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Company
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Submitted
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Documents
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {applications.map((application) => (
-                <tr key={application.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                        <User className="w-5 h-5 text-gray-600" />
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {application.user_profiles?.first_name || 'Unknown'} {application.user_profiles?.last_name || 'User'}
+    <>
+      {selectedApplication ? (
+        <ApplicationDetailView 
+          application={selectedApplication}
+          onBack={() => setSelectedApplication(null)}
+          onApprove={onApprove}
+        />
+      ) : (
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Submitted Applications ({applications.length})</h3>
+              <p className="text-sm text-gray-600 mt-1">Applications submitted by borrowers for review</p>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Applicant
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Company
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Submitted
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Documents
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {applications.map((application) => (
+                    <tr key={application.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                            <User className="w-5 h-5 text-gray-600" />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {application.user_first_name || 'Unknown'} {application.user_last_name || 'User'}
+                            </div>
+                            <div className="text-sm text-gray-500">{application.user_email || 'No email'}</div>
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">{application.user_profiles?.email || 'No email'}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {application.user_profiles?.company || 'Not specified'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
-                      application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
-                      application.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {application.status === 'documents_pending' ? 'Pending Review' :
-                       application.status === 'under_review' ? 'Under Review' :
-                       application.status === 'approved' ? 'Approved' :
-                       application.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {application.submitted_at ? 
-                      new Date(application.submitted_at).toLocaleDateString() :
-                      new Date(application.created_at).toLocaleDateString()
-                    }
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {application.document_count || 0} docs
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
-                      onClick={() => setSelectedApplication(application)}
-                      className="text-blue-600 hover:text-blue-900"
-                      title="View Application"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {application.status === 'documents_pending' && (
-                      <button
-                        onClick={() => onApprove(application.id)}
-                        className="text-green-600 hover:text-green-900"
-                        title="Approve Application"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {application.user_company || 'Not specified'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                          application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                          application.status === 'approved' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {application.status === 'documents_pending' ? 'Pending Review' :
+                           application.status === 'under_review' ? 'Under Review' :
+                           application.status === 'approved' ? 'Approved' :
+                           application.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {application.submitted_at ? 
+                          new Date(application.submitted_at).toLocaleDateString() :
+                          'Not submitted'
+                        }
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {application.document_count || 0} docs
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        <button
+                          onClick={() => setSelectedApplication(application)}
+                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                          title="View Application Details"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
+                        </button>
+                        {(application.status === 'documents_pending' || application.status === 'under_review') && (
+                          <button
+                            onClick={() => onApprove(application.id)}
+                            className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                            title="Approve Application"
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-1" />
+                            Approve
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   )
 }
 
 function BorrowersSection({ borrowers }) {
   if (borrowers.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Users className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-sm font-medium text-gray-900">No approved borrowers</h3>
-        <p className="mt-1 text-sm text-gray-500">Approved borrowers will appear here.</p>
+      <div className="bg-white rounded-xl shadow-lg p-8">
+        <div className="text-center py-12">
+          <Users className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No approved borrowers</h3>
+          <p className="mt-1 text-sm text-gray-500">Approved borrowers will appear here after applications are approved.</p>
+        </div>
       </div>
     )
   }
@@ -691,6 +678,7 @@ function BorrowersSection({ borrowers }) {
     <div className="bg-white rounded-xl shadow-lg overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900">Approved Borrowers ({borrowers.length})</h3>
+        <p className="text-sm text-gray-600 mt-1">Borrowers with approved loan applications</p>
       </div>
       
       <div className="overflow-x-auto">
@@ -724,17 +712,17 @@ function BorrowersSection({ borrowers }) {
                     </div>
                     <div className="ml-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {borrower.user_profiles?.first_name} {borrower.user_profiles?.last_name}
+                        {borrower.user_first_name} {borrower.user_last_name}
                       </div>
-                      <div className="text-sm text-gray-500">{borrower.user_profiles?.email}</div>
+                      <div className="text-sm text-gray-500">{borrower.user_email}</div>
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {borrower.user_profiles?.company || 'Not specified'}
+                  {borrower.user_company || 'Not specified'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {borrower.user_profiles?.phone || 'Not provided'}
+                  {borrower.user_phone || 'Not provided'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
