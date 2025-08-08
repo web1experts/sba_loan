@@ -20,13 +20,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [applications, setApplications] = useState([])
-  const [meetings, setMeetings] = useState([])
 
   useEffect(() => {
     fetchAllData()
-    fetchApplications()
-    fetchMeetings()
   }, [])
 
   const fetchAllData = async () => {
@@ -53,32 +49,6 @@ export default function AdminDashboard() {
       console.error('Error fetching data:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchApplications = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('application_status')
-        .select('*, user_profiles(first_name, last_name, email, company)')
-      
-      if (error) throw error
-      setApplications(data || [])
-    } catch (error) {
-      console.error('Error fetching applications:', error)
-    }
-  }
-
-  const fetchMeetings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('meetings')
-        .select('*, user_profiles(first_name, last_name, email)')
-      
-      if (error) throw error
-      setMeetings(data || [])
-    } catch (error) {
-      console.error('Error fetching meetings:', error)
     }
   }
 
@@ -271,7 +241,7 @@ export default function AdminDashboard() {
 }
 
 // Overview Section Component
-function OverviewSection({ data }) {
+function OverviewSection({ borrowers, referralLeads, teamMembers, applications, meetings }) {
   const stats = [
     {
       name: 'Total Applications',
@@ -279,6 +249,13 @@ function OverviewSection({ data }) {
       icon: FileText,
       color: 'from-blue-500 to-indigo-600',
       bgColor: 'from-blue-50 to-indigo-50'
+    },
+    {
+      name: 'Pending Applications',
+      value: applications.filter(app => app.status === 'documents_pending').length,
+      icon: FileText,
+      color: 'from-yellow-500 to-orange-600',
+      bgColor: 'from-yellow-50 to-orange-50'
     },
     {
       name: 'Active Borrowers',
@@ -302,9 +279,9 @@ function OverviewSection({ data }) {
       bgColor: 'from-orange-50 to-red-50'
     }
   ]
-
-  const recentApplications = data.applications.slice(0, 5)
-  const upcomingMeetings = data.meetings.filter(m => new Date(m.meeting_date) >= new Date()).slice(0, 3)
+      name: 'Scheduled Meetings',
+      value: meetings.filter(m => m.status === 'scheduled').length,
+      icon: Calendar,
 
   return (
     <div className="space-y-8">
