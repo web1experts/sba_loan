@@ -1021,3 +1021,264 @@ function ReferralLeadsSection({ referralLeads }) {
     </div>
   )
 }
+
+// New component for detailed application view
+function ApplicationDetailView({ application, onBack, onApprove }) {
+  const [documents, setDocuments] = useState([])
+  const [loadingDocuments, setLoadingDocuments] = useState(true)
+  const [approvingDocument, setApprovingDocument] = useState(null)
+
+  useEffect(() => {
+    fetchApplicationDocuments()
+  }, [application.user_id])
+
+  const fetchApplicationDocuments = async () => {
+    try {
+      setLoadingDocuments(true)
+      const { data, error } = await supabase.rpc('get_application_documents', {
+        p_user_id: application.user_id
+      })
+
+      if (error) throw error
+      
+      // Generate signed URLs for documents
+      const documentsWithUrls = await Promise.all(
+        (data || []).map(async (doc) => {
+          try {
+            const { data: signedUrl } = await supabase.storage
+              .from('borrower-docs')
+              .createSignedUrl(doc.file_path, 3600) // 1 hour expiry
+            
+            return {
+              ...doc,
+              signed_url: signedUrl?.signedUrl || null
+            }
+          } catch (urlError) {
+            console.error('Error generating signed URL for', doc.file_name, urlError)
+            return {
+              ...doc,
+              signed_url: null
+            }
+          }
+        })
+      )
+      
+      setDocuments(documentsWithUrls)
+    } catch (error) {
+      console.error('Error fetching application documents:', error)
+      setDocuments([])
+    } finally {
+      setLoadingDocuments(false)
+    }
+  }
+
+  const handleApproveDocument = async (documentId) => {
+    try {
+      setApprovingDocument(documentId)
+      const { data, error } = await supabase.rpc('approve_document', {
+        p_document_id: documentId,
+        p_admin_notes: 'Document approved by admin'
+      })
+
+      if (error) throw error
+      
+      // Refresh documents
+      await fetchApplicationDocuments()
+      alert('Document approved successfully!')
+    } catch (error) {
+      console.error('Error approving document:', error)
+      alert('Failed to approve document')
+    } finally {
+      setApprovingDocument(null)
+    }
+  }
+
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split('.').pop()?.toLowerCase()
+    if (['pdf'].includes(extension)) return '📄'
+    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return '🖼️'
+    if (['doc', 'docx'].includes(extension)) return '📝'
+    if (['xls', 'xlsx'].includes(extension)) return '📊'
+    return '📎'
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={onBack}
+            className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            ← Back to Applications
+          </button>
+          
+          {(application.status === 'documents_pending' || application.status === 'under_review') && (
+            <button
+              onClick={() => onApprove(application.id)}
+              className="inline-flex items-center px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Approve Full Application
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {application.user_first_name} {application.user_last_name}
+            </h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center space-x-2">
+                <Mail className="w-4 h-4 text-gray-400" />
+                <span>{application.user_email}</span>
+              </div>
+              {application.user_phone && (
+                <div className="flex items-center space-x-2">
+                  <Phone className="w-4 h-4 text-gray-400" />
+                  <span>{application.user_phone}</span>
+                </div>
+              )}
+              {application.user_company && (
+                <div className="flex items-center space-x-2">
+                  <Building className="w-4 h-4 text-gray-400" />
+                  <span>{application.user_company}</span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3">Application Status</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Status:</span>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                    application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                    application.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {application.status === 'documents_pending' ? 'Pending Review' :
+                     application.status === 'under_review' ? 'Under Review' :
+                     application.status === 'approved' ? 'Approved' :
+                     application.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Submitted:</span>
+                  <span className="text-sm text-gray-900">
+                    {application.submitted_at ? 
+                      new Date(application.submitted_at).toLocaleDateString() :
+                      'Not submitted'
+                    }
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Documents:</span>
+                  <span className="text-sm text-gray-900">{application.document_count || 0} files</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {application.notes && (
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+            <h4 className="font-semibold text-blue-900 mb-2">Application Notes</h4>
+            <p className="text-blue-800 text-sm">{application.notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Documents Section */}
+      <div className="bg-white rounded-xl shadow-lg">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Uploaded Documents</h3>
+          <p className="text-sm text-gray-600 mt-1">Review and approve individual documents</p>
+        </div>
+
+        <div className="p-6">
+          {loadingDocuments ? (
+            <div className="text-center py-8">
+              <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading documents...</p>
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No documents uploaded</h3>
+              <p className="mt-1 text-sm text-gray-500">This applicant hasn't uploaded any documents yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {documents.map((doc) => (
+                <div key={doc.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="text-2xl">{getFileIcon(doc.file_name)}</div>
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{doc.doc_name}</h4>
+                        <p className="text-sm text-gray-600">{doc.file_name}</p>
+                        <p className="text-xs text-gray-500">
+                          Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        doc.status === 'approved' ? 'bg-green-100 text-green-800' :
+                        doc.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {doc.status === 'approved' ? 'Approved' :
+                         doc.status === 'rejected' ? 'Rejected' :
+                         'Pending Review'}
+                      </span>
+                      
+                      {doc.signed_url && (
+                        <a
+                          href={doc.signed_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
+                        </a>
+                      )}
+                      
+                      {doc.status !== 'approved' && (
+                        <button
+                          onClick={() => handleApproveDocument(doc.id)}
+                          disabled={approvingDocument === doc.id}
+                          className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors disabled:opacity-50"
+                        >
+                          {approvingDocument === doc.id ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1" />
+                              Approving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 mr-1" />
+                              Approve
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
