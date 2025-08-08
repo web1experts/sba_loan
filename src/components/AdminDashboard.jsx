@@ -563,6 +563,24 @@ function BorrowersSection({ borrowers }) {
 }
 
 function MeetingsSection({ meetings, onUpdateStatus }) {
+  const [activeTab, setActiveTab] = useState('all')
+  
+  const callbackRequests = meetings.filter(m => m.meeting_type === 'callback')
+  const inPersonMeetings = meetings.filter(m => m.meeting_type === 'in-person')
+  
+  const getFilteredMeetings = () => {
+    switch(activeTab) {
+      case 'callback':
+        return callbackRequests
+      case 'in-person':
+        return inPersonMeetings
+      default:
+        return meetings
+    }
+  }
+  
+  const filteredMeetings = getFilteredMeetings()
+
   if (meetings.length === 0) {
     return (
       <div className="text-center py-12">
@@ -574,99 +592,165 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900">Scheduled Meetings ({meetings.length})</h3>
-      </div>
+    <div className="space-y-6">
+      {/* Meeting Type Tabs */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Customer Scheduled Meetings ({meetings.length})</h3>
+          <div className="mt-4 flex space-x-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'all'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              All Meetings ({meetings.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('callback')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'callback'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Call Back Requests ({callbackRequests.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('in-person')}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'in-person'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              In-Person Meetings ({inPersonMeetings.length})
+            </button>
+          </div>
+        </div>
       
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Participant
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date & Time
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Purpose
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {meetings.map((meeting) => (
-              <tr key={meeting.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        {meeting.user_profiles?.first_name} {meeting.user_profiles?.last_name}
+        {filteredMeetings.length === 0 ? (
+          <div className="text-center py-8">
+            <Calendar className="mx-auto h-8 w-8 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              No {activeTab === 'callback' ? 'callback requests' : activeTab === 'in-person' ? 'in-person meetings' : 'meetings'}
+            </h3>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Borrower
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    {activeTab === 'callback' ? 'Contact Info' : 'Date & Time'}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Purpose
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Notes
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredMeetings.map((meeting) => (
+                  <tr key={meeting.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                          meeting.meeting_type === 'callback' ? 'bg-green-100' : 'bg-blue-100'
+                        }`}>
+                          <User className={`w-5 h-5 ${
+                            meeting.meeting_type === 'callback' ? 'text-green-600' : 'text-blue-600'
+                          }`} />
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {meeting.user_profiles?.first_name} {meeting.user_profiles?.last_name}
+                          </div>
+                          <div className="text-sm text-gray-500">{meeting.user_profiles?.email}</div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500">{meeting.user_profiles?.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    {new Date(meeting.meeting_date).toLocaleDateString()}
-                  </div>
-                  <div className="text-sm text-gray-500">{meeting.meeting_time}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center text-sm text-gray-900">
-                    {meeting.meeting_type === 'phone' && <Phone className="w-4 h-4 mr-1" />}
-                    {meeting.meeting_type === 'video' && <Calendar className="w-4 h-4 mr-1" />}
-                    {meeting.meeting_type === 'in-person' && <MapPin className="w-4 h-4 mr-1" />}
-                    {meeting.meeting_type}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {meeting.purpose}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                    meeting.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {meeting.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                  {meeting.status === 'scheduled' && (
-                    <>
-                      <button
-                        onClick={() => onUpdateStatus(meeting.id, 'completed')}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        Complete
-                      </button>
-                      <button
-                        onClick={() => onUpdateStatus(meeting.id, 'cancelled')}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {meeting.meeting_type === 'callback' ? (
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{meeting.contact_info}</div>
+                          <div className="text-sm text-gray-500">Preferred: {meeting.meeting_time}</div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="text-sm text-gray-900">
+                            {new Date(meeting.meeting_date).toLocaleDateString()}
+                          </div>
+                          <div className="text-sm text-gray-500">{meeting.meeting_time}</div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center text-sm text-gray-900">
+                        {meeting.meeting_type === 'callback' && <Phone className="w-4 h-4 mr-1 text-green-600" />}
+                        {meeting.meeting_type === 'in-person' && <MapPin className="w-4 h-4 mr-1 text-blue-600" />}
+                        <span className="capitalize">
+                          {meeting.meeting_type === 'callback' ? 'Call Back Request' : 'In-Person Meeting'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {meeting.purpose}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-900 max-w-xs truncate" title={meeting.notes}>
+                        {meeting.notes || 'No notes'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                        meeting.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {meeting.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                      {meeting.status === 'scheduled' && (
+                        <>
+                          <button
+                            onClick={() => onUpdateStatus(meeting.id, 'completed')}
+                            className="text-green-600 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50"
+                          >
+                            Complete
+                          </button>
+                          <button
+                            onClick={() => onUpdateStatus(meeting.id, 'cancelled')}
+                            className="text-red-600 hover:text-red-900 px-2 py-1 rounded hover:bg-red-50"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
