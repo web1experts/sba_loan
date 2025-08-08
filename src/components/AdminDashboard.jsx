@@ -54,37 +54,64 @@ export default function AdminDashboard() {
 
   const fetchApplications = async () => {
     try {
+      console.log('Fetching applications...')
+      
+      // First, let's try to get all application_status records to see what we have
+      const { data: allApps, error: allError } = await supabase
+        .from('application_status')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      console.log('All application_status records:', allApps)
+      if (allError) console.error('Error fetching all applications:', allError)
+
+      // Now try to get applications with user profiles
       const { data, error } = await supabase
         .from('application_status')
         .select(`
           *,
-          user_profiles!inner(*)
+          user_profiles(*)
         `)
-        .eq('status', 'documents_pending')
+        .in('status', ['documents_pending', 'under_review', 'submitted'])
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      console.log('Applications with profiles:', data)
+      if (error) {
+        console.error('Error fetching applications with profiles:', error)
+        // Fallback: use the basic data without profiles
+        setApplications(allApps || [])
+        return
+      }
+      
       setApplications(data || [])
     } catch (error) {
       console.error('Error fetching applications:', error)
+      setApplications([])
     }
   }
 
   const fetchBorrowers = async () => {
     try {
+      console.log('Fetching borrowers...')
       const { data, error } = await supabase
         .from('application_status')
         .select(`
           *,
-          user_profiles!inner(*)
+          user_profiles(*)
         `)
-        .eq('status', 'approved')
+        .in('status', ['approved', 'funded'])
         .order('updated_at', { ascending: false })
 
-      if (error) throw error
+      console.log('Borrowers data:', data)
+      if (error) {
+        console.error('Error fetching borrowers:', error)
+        setBorrowers([])
+        return
+      }
       setBorrowers(data || [])
     } catch (error) {
       console.error('Error fetching borrowers:', error)
+      setBorrowers([])
     }
   }
 
@@ -156,22 +183,38 @@ export default function AdminDashboard() {
 
   const fetchReferralLeads = async () => {
     try {
+      console.log('Fetching referral leads...')
+      
+      // First try simple query to see if we have any referral leads
+      const { data: simpleLeads, error: simpleError } = await supabase
+        .from('referral_leads')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      console.log('Simple referral leads:', simpleLeads)
+      if (simpleError) console.error('Simple referral leads error:', simpleError)
+
+      // Try with user relationship
       const { data, error } = await supabase
         .from('referral_leads')
         .select(`
           *,
-          users!referral_leads_referral_user_id_fkey(
-            id,
-            email,
-            user_profiles(*)
-          )
+          user_profiles!inner(*)
         `)
+        .eq('user_profiles.id', 'referral_leads.referral_user_id')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
+      console.log('Referral leads with profiles:', data)
+      if (error) {
+        console.error('Error fetching referral leads with profiles:', error)
+        // Use simple data as fallback
+        setReferralLeads(simpleLeads || [])
+        return
+      }
       setReferralLeads(data || [])
     } catch (error) {
       console.error('Error fetching referral leads:', error)
+      setReferralLeads([])
     }
   }
 
@@ -474,12 +517,20 @@ function OverviewSection({ stats }) {
 }
 
 function ApplicationsSection({ applications, onApprove, selectedApplication, setSelectedApplication }) {
+  console.log('ApplicationsSection received applications:', applications)
+  
   if (applications.length === 0) {
     return (
       <div className="text-center py-12">
         <FileText className="mx-auto h-12 w-12 text-gray-400" />
         <h3 className="mt-2 text-sm font-medium text-gray-900">No pending applications</h3>
-        <p className="mt-1 text-sm text-gray-500">Applications will appear here when submitted by borrowers.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Applications will appear here when submitted by borrowers.
+          <br />
+          <small className="text-xs text-gray-400">
+            Check browser console for debugging information.
+          </small>
+        </p>
       </div>
     )
   }
@@ -522,9 +573,11 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">
-                          {application.user_profiles?.first_name} {application.user_profiles?.last_name}
+                          {application.user_profiles?.first_name || 'Unknown'} {application.user_profiles?.last_name || 'User'}
                         </div>
-                        <div className="text-sm text-gray-500">{application.user_profiles?.email}</div>
+                        <div className="text-sm text-gray-500">
+                          {application.user_profiles?.email || 'No email available'}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -532,12 +585,23 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                     {application.user_profiles?.company || 'Not specified'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                      Pending Review
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                      application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                      application.status === 'submitted' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {application.status === 'documents_pending' ? 'Pending Review' :
+                       application.status === 'under_review' ? 'Under Review' :
+                       application.status === 'submitted' ? 'Submitted' :
+                       application.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(application.created_at).toLocaleDateString()}
+                    {application.submitted_at ? 
+                      new Date(application.submitted_at).toLocaleDateString() :
+                      new Date(application.created_at).toLocaleDateString()
+                    }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
