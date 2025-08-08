@@ -15,6 +15,7 @@ export default function AdminDashboard() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [selectedApplication, setSelectedApplication] = useState(null)
   const [applicationDocuments, setApplicationDocuments] = useState([])
   const [loadingDocuments, setLoadingDocuments] = useState(false)
 
@@ -23,47 +24,17 @@ export default function AdminDashboard() {
     
     // Set up real-time subscription for meetings
     const meetingsSubscription = supabase
-      .channel('meetings_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'meetings' },
-        (payload) => {
-          console.log('Meeting change detected:', payload)
-          fetchMeetings() // Refresh meetings when changes occur
-        }
-      )
-      .subscribe()
-
-    return () => {
-      meetingsSubscription.unsubscribe()
-    }
-  }, [])
-
-  const fetchAllData = async () => {
-    setLoading(true)
-      console.log('Fetching applications...')
+      console.log('Fetching submitted applications...')
       
-      // Use the new admin applications function
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_admin_applications')
-        fetchApplications(),
-        fetchBorrowers(),
-        fetchMeetings(),
-        fetchReferralLeads()
-        throw new Error(`Failed to fetch applications: ${rpcError.message}`)
+      const { data, error } = await supabase.rpc('get_admin_submissions')
       
-        console.log('Applications fetched successfully:', rpcData)
-        setApplications(rpcData || [])
-      setApplications(data || [])
-    } catch (error) {
-      console.error('Error fetching applications:', error)
-      // Try fallback query
-      try {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            id,
-            user_id,
-            status,
-            stage,
+      if (error) {
+        console.error('Error fetching applications:', error)
+        setApplications([])
+      } else {
+        console.log('Applications fetched:', data)
+        setApplications(data || [])
+      }
             submitted_at,
             folder_name,
             notes,
@@ -98,7 +69,7 @@ export default function AdminDashboard() {
             
             return {
               ...app,
-              borrower_name: profile ? `${profile.first_name} ${profile.last_name}` : 'Unknown User',
+              borrower_name: profile ? \`${profile.first_name} ${profile.last_name}` : 'Unknown User',
               email: profile?.email || 'No email',
               document_count: count || 0
             }
@@ -152,52 +123,37 @@ export default function AdminDashboard() {
       
       const transformedData = (data || []).map(app => ({
         id: app.user_id,
-        name: `${app.user_profiles.first_name} ${app.user_profiles.last_name}`,
+        name: \`${app.user_profiles.first_name} ${app.user_profiles.last_name}`,
         email: app.user_profiles.email,
         phone: app.user_profiles.phone || 'Not provided',
         company: app.user_profiles.company || 'Not provided',
         status: app.status,
         approved_at: app.updated_at,
-        loan_amount: 'Not specified'
-      }))
+      console.log('Fetching approved borrowers...')
       
-      console.log('Approved borrowers:', transformedData)
-      setBorrowers(transformedData)
-    } catch (error) {
-      console.error('Error fetching borrowers:', error)
-      setBorrowers([])
+      const { data, error } = await supabase.rpc('get_admin_submissions')
       
-      // Fallback: try direct query if RPC fails
-      try {
-        console.log('Trying fallback query for borrowers...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            *,
-            user_profiles(*)
-          `)
-          .eq('status', 'approved')
-          .whereNotNull('submitted_at')
-          .order('updated_at', { ascending: false })
-
-        if (fallbackError) {
-          console.error('Fallback query failed:', fallbackError)
-          setBorrowers([])
-        } else {
-          console.log('Fallback query successful:', fallbackData)
-          setBorrowers(fallbackData || [])
-        }
-      } catch (fallbackErr) {
-        console.error('Complete failure to fetch borrowers:', fallbackErr)
+      if (error) {
+        console.error('Error fetching borrowers:', error)
         setBorrowers([])
+      } else {
+        // Filter only approved applications
+        const approvedBorrowers = (data || [])
+          .filter(app => app.status === 'approved')
+          .map(app => ({
+            id: app.user_id,
+            name: app.borrower_name,
+            email: app.borrower_email,
+            phone: app.phone,
+            company: app.company,
+            status: app.status,
+            approved_at: app.reviewed_at,
+            loan_amount: 'Not specified'
+          }))
+        
+        console.log('Approved borrowers:', approvedBorrowers)
+        setBorrowers(approvedBorrowers)
       }
-    }
-  }
-
-  const fetchMeetings = async () => {
-    try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
       if (authError || !currentUser) {
         console.error('Admin auth error:', authError)
         setMeetings([])
@@ -331,7 +287,7 @@ export default function AdminDashboard() {
       
       if (error) {
         console.error('Error approving application:', error)
-        alert(`Failed to approve application: ${error.message}`)
+        alert(\`Failed to approve application: ${error.message}`)
         return
       }
       
@@ -343,7 +299,7 @@ export default function AdminDashboard() {
       setSelectedApplication(null)
     } catch (error) {
       console.error('Error approving application:', error)
-      alert(`Failed to approve application: ${error.message}`)
+      alert(\`Failed to approve application: ${error.message}`)
     }
   }
 
@@ -357,7 +313,7 @@ export default function AdminDashboard() {
       
       if (error) {
         console.error('Error approving document:', error)
-        alert(`Failed to approve document: ${error.message}`)
+        alert(\`Failed to approve document: ${error.message}`)
         return
       }
       
@@ -369,7 +325,7 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error('Error approving document:', error)
-      alert(`Failed to approve document: ${error.message}`)
+      alert(\`Failed to approve document: ${error.message}`)
     }
   }
 
@@ -476,7 +432,7 @@ export default function AdminDashboard() {
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 flex overflow-hidden">
       {/* Fixed Left Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 backdrop-blur-xl shadow-xl transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out lg:translate-x-0 lg:relative lg:flex-shrink-0 border-r border-gray-200/50 flex flex-col h-full`}>
+      <div className={\`fixed inset-y-0 left-0 z-50 w-80 bg-white/95 backdrop-blur-xl shadow-xl transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out lg:translate-x-0 lg:relative lg:flex-shrink-0 border-r border-gray-200/50 flex flex-col h-full`}>
         {/* Sidebar Header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 bg-gradient-to-r from-gray-700 to-gray-900 flex-shrink-0">
           <div className="flex items-center space-x-3">
@@ -505,7 +461,7 @@ export default function AdminDashboard() {
                     setActiveTab(tab.id)
                     setSidebarOpen(false)
                   }}
-                  className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+                  className={\`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
                     activeTab === tab.id
                       ? 'bg-gradient-to-r from-gray-700 to-gray-900 text-white shadow-lg'
                       : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100/80'
@@ -664,8 +620,8 @@ function OverviewSection({ stats }) {
                   <p className="text-sm font-medium text-gray-600 mb-1">{stat.name}</p>
                   <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 </div>
-                <div className={`w-12 h-12 bg-gradient-to-br ${stat.bgColor} rounded-xl flex items-center justify-center shadow-md`}>
-                  <Icon className={`w-6 h-6 bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`} />
+                <div className={\`w-12 h-12 bg-gradient-to-br ${stat.bgColor} rounded-xl flex items-center justify-center shadow-md`}>
+                  <Icon className={\`w-6 h-6 bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`} />
                 </div>
               </div>
             </div>
@@ -751,7 +707,7 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                         {application.user_company || 'Not specified'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        <span className={\`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
                           application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
                           application.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -922,7 +878,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
           <div className="mt-4 flex space-x-1 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={\`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'all'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
@@ -932,7 +888,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
             </button>
             <button
               onClick={() => setActiveTab('callback')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={\`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'callback'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
@@ -942,7 +898,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
             </button>
             <button
               onClick={() => setActiveTab('in-person')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              className={\`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                 activeTab === 'in-person'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
@@ -993,10 +949,10 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                   <tr key={meeting.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        <div className={\`w-10 h-10 rounded-full flex items-center justify-center ${
                           meeting.meeting_type === 'callback' ? 'bg-green-100' : 'bg-blue-100'
                         }`}>
-                          <User className={`w-5 h-5 ${
+                          <User className={\`w-5 h-5 ${
                             meeting.meeting_type === 'callback' ? 'text-green-600' : 'text-blue-600'
                           }`} />
                         </div>
@@ -1041,7 +997,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      <span className={\`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                         meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
                         meeting.status === 'completed' ? 'bg-green-100 text-green-800' :
                         'bg-red-100 text-red-800'
@@ -1143,7 +1099,7 @@ function ReferralLeadsSection({ referralLeads }) {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                  <span className={\`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
                     lead.status === 'contacted' ? 'bg-yellow-100 text-yellow-800' :
                     lead.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -1236,161 +1192,6 @@ function ApplicationDetailView({ application, onBack, onApprove }) {
     }
   }
 
-function ApplicationDetailView({ 
-  application, 
-  documents, 
-  loadingDocuments, 
-  onBack, 
-  onApproveApplication, 
-  onApproveDocument,
-  onGenerateSignedUrl 
-}) {
-  const [viewingDocument, setViewingDocument] = useState(null)
-
-  const handleViewDocument = async (document) => {
-    if (document.file_path) {
-      const signedUrl = await onGenerateSignedUrl(document.file_path)
-      if (signedUrl) {
-        window.open(signedUrl, '_blank')
-      } else {
-        alert('Unable to generate document preview link')
-      }
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/30 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={onBack}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              ← Back to Applications
-            </button>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">{application.borrower_name}</h2>
-              <p className="text-gray-600">{application.email}</p>
-            </div>
-          </div>
-          
-          {application.status !== 'approved' && (
-            <button
-              onClick={() => onApproveApplication(application.user_id)}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span>Approve Application</span>
-            </button>
-          )}
-        </div>
-
-        {/* Application Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-500">Status</div>
-            <div className="mt-1">
-              <StatusBadge status={application.status} />
-            </div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-500">Submitted</div>
-            <div className="mt-1 text-sm text-gray-900">
-              {application.submitted_at ? new Date(application.submitted_at).toLocaleString() : 'Not submitted'}
-            </div>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm font-medium text-gray-500">Documents</div>
-            <div className="mt-1 text-sm text-gray-900">
-              {application.document_count} files uploaded
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Documents Section */}
-      <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/30">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-900">Uploaded Documents</h3>
-          <p className="text-gray-600">Review and approve individual documents</p>
-        </div>
-
-        <div className="p-6">
-          {loadingDocuments ? (
-            <div className="text-center py-8">
-              <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading documents...</p>
-            </div>
-          ) : documents.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No documents found</h3>
-              <p className="mt-1 text-sm text-gray-500">This application has no uploaded documents.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {documents.map((document) => (
-                <div key={document.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all duration-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <h4 className="text-lg font-semibold text-gray-900">{document.doc_name}</h4>
-                        <p className="text-sm text-gray-600">{document.file_name}</p>
-                        <p className="text-xs text-gray-500">
-                          Uploaded: {document.uploaded_at ? new Date(document.uploaded_at).toLocaleString() : 'Unknown'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center space-x-3">
-                      <StatusBadge status={document.status} />
-                      
-                      <button
-                        onClick={() => handleViewDocument(document)}
-                        className="text-blue-600 hover:text-blue-800 p-2 rounded-lg hover:bg-blue-50 transition-colors flex items-center space-x-1"
-                        title="View document"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span className="text-sm">View</span>
-                      </button>
-                      
-                      {document.status !== 'approved' && (
-                        <button
-                          onClick={() => onApproveDocument(document.id)}
-                          className="text-green-600 hover:text-green-800 p-2 rounded-lg hover:bg-green-50 transition-colors flex items-center space-x-1"
-                          title="Approve document"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          <span className="text-sm">Approve</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Notes Section */}
-      {application.notes && (
-        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/30 p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Application Notes</h3>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-gray-700">{application.notes}</p>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
   const getFileIcon = (fileName) => {
     const extension = fileName.split('.').pop()?.toLowerCase()
     if (['pdf'].includes(extension)) return '📄'
@@ -1402,8 +1203,8 @@ function ApplicationDetailView({
 
   return (
     <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-gray-900">Approved Borrowers</h2>
-            <p className="text-gray-600">Manage approved borrowers (moved from Applications after approval)</p>
+      {/* Header */}
+      <div className="bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={onBack}
@@ -1454,7 +1255,7 @@ function ApplicationDetailView({
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Status:</span>
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                  <span className={\`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                     application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
                     application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
                     application.status === 'approved' ? 'bg-green-100 text-green-800' :
@@ -1528,7 +1329,7 @@ function ApplicationDetailView({
                     </div>
                     
                     <div className="flex items-center space-x-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      <span className={\`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                         doc.status === 'approved' ? 'bg-green-100 text-green-800' :
                         doc.status === 'rejected' ? 'bg-red-100 text-red-800' :
                         'bg-yellow-100 text-yellow-800'
