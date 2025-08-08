@@ -42,16 +42,49 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
     setSubmitting(true)
 
     try {
-      // Submit application using simple function
-      const { error } = await supabase.rpc('submit_application', {
-        p_user_id: user.id,
-        p_notes: `Documents uploaded: ${documents.length}, Categories: ${uploadedCategories.join(', ')}`
+      // Get current authenticated user to ensure we have the latest auth state
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !currentUser) {
+        throw new Error('Authentication required. Please log in again.')
+      }
+
+      console.log('Submitting application for user:', currentUser.id)
+      console.log('Document count:', documents.length)
+      console.log('User profile:', userProfile)
+
+      // Generate folder name
+      const folderName = generateFolderName()
+      console.log('Generated folder name:', folderName)
+
+      // Prepare submission data
+      const submissionData = {
+        user_id: currentUser.id,
+        email: currentUser.email,
+        first_name: userProfile?.first_name || currentUser.user_metadata?.first_name || '',
+        last_name: userProfile?.last_name || currentUser.user_metadata?.last_name || '',
+        phone: userProfile?.phone || '',
+        company: userProfile?.company || '',
+        document_categories: uploadedCategories,
+        total_documents: documents.length,
+        submission_timestamp: new Date().toISOString()
+      }
+
+      console.log('Submission data:', submissionData)
+
+      // Submit application using the new function
+      const { data, error } = await supabase.rpc('submit_borrower_application', {
+        p_user_id: currentUser.id,
+        p_document_count: documents.length,
+        p_folder_name: folderName,
+        p_submission_data: submissionData
       })
 
       if (error) {
+        console.error('Application submission error:', error)
         throw new Error(`Failed to submit application: ${error.message}`)
       }
 
+      console.log('Application submitted successfully:', data)
       setSubmitted(true)
       
       // Show success for 3 seconds then redirect
