@@ -70,13 +70,26 @@ export default function AdminDashboard() {
         return
       }
 
-      // Use the submitted applications function
-      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
+      // Use the custom function for better data retrieval
+      const { data, error } = await supabase
+        .rpc('get_applications_for_admin')
 
       if (error) throw error
       
-      console.log('Fetched submitted applications:', data) // Debug log
-      setApplications(data || [])
+      // Transform the data to match expected format
+      const transformedData = (data || []).map(app => ({
+        ...app,
+        user_profiles: {
+          first_name: app.user_first_name,
+          last_name: app.user_last_name,
+          email: app.user_email,
+          phone: app.user_phone,
+          company: app.user_company
+        }
+      }))
+      
+      console.log('Fetched applications:', transformedData) // Debug log
+      setApplications(transformedData)
     } catch (error) {
       console.error('Error fetching applications:', error)
       
@@ -89,8 +102,7 @@ export default function AdminDashboard() {
             *,
             user_profiles(*)
           `)
-          .whereNotNull('submitted_at')
-          .in('status', ['documents_pending', 'under_review', 'approved'])
+          .in('status', ['documents_pending', 'under_review'])
           .order('created_at', { ascending: false })
 
         if (fallbackError) {
@@ -125,16 +137,26 @@ export default function AdminDashboard() {
         return
       }
 
-      // Get approved applications only
-      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
+      // Use the custom function for better data retrieval
+      const { data, error } = await supabase
+        .rpc('get_borrowers_for_admin')
 
       if (error) throw error
       
-      // Filter only approved applications
-      const approvedBorrowers = (data || []).filter(app => app.status === 'approved')
+      // Transform the data to match expected format
+      const transformedData = (data || []).map(borrower => ({
+        ...borrower,
+        user_profiles: {
+          first_name: borrower.user_first_name,
+          last_name: borrower.user_last_name,
+          email: borrower.user_email,
+          phone: borrower.user_phone,
+          company: borrower.user_company
+        }
+      }))
       
-      console.log('Fetched approved borrowers:', approvedBorrowers) // Debug log
-      setBorrowers(approvedBorrowers)
+      console.log('Fetched borrowers:', transformedData) // Debug log
+      setBorrowers(transformedData)
     } catch (error) {
       console.error('Error fetching borrowers:', error)
       
@@ -148,7 +170,6 @@ export default function AdminDashboard() {
             user_profiles(*)
           `)
           .eq('status', 'approved')
-          .whereNotNull('submitted_at')
           .order('updated_at', { ascending: false })
 
         if (fallbackError) {
@@ -257,10 +278,14 @@ export default function AdminDashboard() {
 
   const handleApproveApplication = async (applicationId) => {
     try {
-      const { data, error } = await supabase.rpc('approve_application', {
-        p_application_id: applicationId,
-        p_admin_notes: 'Application approved by admin'
-      })
+      const { error } = await supabase
+        .from('application_status')
+        .update({ 
+          status: 'approved',
+          updated_at: new Date().toISOString(),
+          updated_by: user.id
+        })
+        .eq('id', applicationId)
 
       if (error) throw error
       
@@ -542,134 +567,122 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No pending applications</h3>
-          <p className="mt-1 text-sm text-gray-500">Submitted applications will appear here when borrowers complete their submissions.</p>
+          <p className="mt-1 text-sm text-gray-500">Applications will appear here when submitted by borrowers.</p>
+          <div className="mt-4 text-xs text-gray-400">
+            Looking for applications with status: documents_pending, under_review
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <>
-      {selectedApplication ? (
-        <ApplicationDetailView 
-          application={selectedApplication}
-          onBack={() => setSelectedApplication(null)}
-          onApprove={onApprove}
-        />
-      ) : (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Submitted Applications ({applications.length})</h3>
-              <p className="text-sm text-gray-600 mt-1">Applications submitted by borrowers for review</p>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Applicant
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Company
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Submitted
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Documents
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {applications.map((application) => (
-                    <tr key={application.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                            <User className="w-5 h-5 text-gray-600" />
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {application.user_first_name || 'Unknown'} {application.user_last_name || 'User'}
-                            </div>
-                            <div className="text-sm text-gray-500">{application.user_email || 'No email'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {application.user_company || 'Not specified'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
-                          application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
-                          application.status === 'approved' ? 'bg-green-100 text-green-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {application.status === 'documents_pending' ? 'Pending Review' :
-                           application.status === 'under_review' ? 'Under Review' :
-                           application.status === 'approved' ? 'Approved' :
-                           application.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {application.submitted_at ? 
-                          new Date(application.submitted_at).toLocaleDateString() :
-                          'Not submitted'
-                        }
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {application.document_count || 0} docs
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        <button
-                          onClick={() => setSelectedApplication(application)}
-                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-                          title="View Application Details"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </button>
-                        {(application.status === 'documents_pending' || application.status === 'under_review') && (
-                          <button
-                            onClick={() => onApprove(application.id)}
-                            className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                            title="Approve Application"
-                          >
-                            <CheckCircle2 className="w-4 h-4 mr-1" />
-                            Approve
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Pending Applications ({applications.length})</h3>
         </div>
-      )}
-    </>
+        
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Applicant
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Company
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Submitted
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Documents
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {applications.map((application) => (
+                <tr key={application.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                        <User className="w-5 h-5 text-gray-600" />
+                      </div>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">
+                          {application.user_profiles?.first_name || 'Unknown'} {application.user_profiles?.last_name || 'User'}
+                        </div>
+                        <div className="text-sm text-gray-500">{application.user_profiles?.email || 'No email'}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {application.user_profiles?.company || 'Not specified'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                      application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                      application.status === 'approved' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {application.status === 'documents_pending' ? 'Pending Review' :
+                       application.status === 'under_review' ? 'Under Review' :
+                       application.status === 'approved' ? 'Approved' :
+                       application.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {application.submitted_at ? 
+                      new Date(application.submitted_at).toLocaleDateString() :
+                      new Date(application.created_at).toLocaleDateString()
+                    }
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {application.document_count || 0} docs
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                    <button
+                      onClick={() => setSelectedApplication(application)}
+                      className="text-blue-600 hover:text-blue-900"
+                      title="View Application"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    {application.status === 'documents_pending' && (
+                      <button
+                        onClick={() => onApprove(application.id)}
+                        className="text-green-600 hover:text-green-900"
+                        title="Approve Application"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   )
 }
 
 function BorrowersSection({ borrowers }) {
   if (borrowers.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <div className="text-center py-12">
-          <Users className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No approved borrowers</h3>
-          <p className="mt-1 text-sm text-gray-500">Approved borrowers will appear here after applications are approved.</p>
-        </div>
+      <div className="text-center py-12">
+        <Users className="mx-auto h-12 w-12 text-gray-400" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">No approved borrowers</h3>
+        <p className="mt-1 text-sm text-gray-500">Approved borrowers will appear here.</p>
       </div>
     )
   }
@@ -678,7 +691,6 @@ function BorrowersSection({ borrowers }) {
     <div className="bg-white rounded-xl shadow-lg overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900">Approved Borrowers ({borrowers.length})</h3>
-        <p className="text-sm text-gray-600 mt-1">Borrowers with approved loan applications</p>
       </div>
       
       <div className="overflow-x-auto">
@@ -712,17 +724,17 @@ function BorrowersSection({ borrowers }) {
                     </div>
                     <div className="ml-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {borrower.user_first_name} {borrower.user_last_name}
+                        {borrower.user_profiles?.first_name} {borrower.user_profiles?.last_name}
                       </div>
-                      <div className="text-sm text-gray-500">{borrower.user_email}</div>
+                      <div className="text-sm text-gray-500">{borrower.user_profiles?.email}</div>
                     </div>
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {borrower.user_company || 'Not specified'}
+                  {borrower.user_profiles?.company || 'Not specified'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {borrower.user_phone || 'Not provided'}
+                  {borrower.user_profiles?.phone || 'Not provided'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
@@ -1017,267 +1029,6 @@ function ReferralLeadsSection({ referralLeads }) {
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  )
-}
-
-// New component for detailed application view
-function ApplicationDetailView({ application, onBack, onApprove }) {
-  const [documents, setDocuments] = useState([])
-  const [loadingDocuments, setLoadingDocuments] = useState(true)
-  const [approvingDocument, setApprovingDocument] = useState(null)
-
-  useEffect(() => {
-    fetchApplicationDocuments()
-  }, [application.user_id])
-
-  const fetchApplicationDocuments = async () => {
-    try {
-      setLoadingDocuments(true)
-      const { data, error } = await supabase.rpc('get_application_documents', {
-        p_user_id: application.user_id
-      })
-
-      if (error) throw error
-      
-      // Generate signed URLs for documents
-      const documentsWithUrls = await Promise.all(
-        (data || []).map(async (doc) => {
-          try {
-            const { data: signedUrl } = await supabase.storage
-              .from('borrower-docs')
-              .createSignedUrl(doc.file_path, 3600) // 1 hour expiry
-            
-            return {
-              ...doc,
-              signed_url: signedUrl?.signedUrl || null
-            }
-          } catch (urlError) {
-            console.error('Error generating signed URL for', doc.file_name, urlError)
-            return {
-              ...doc,
-              signed_url: null
-            }
-          }
-        })
-      )
-      
-      setDocuments(documentsWithUrls)
-    } catch (error) {
-      console.error('Error fetching application documents:', error)
-      setDocuments([])
-    } finally {
-      setLoadingDocuments(false)
-    }
-  }
-
-  const handleApproveDocument = async (documentId) => {
-    try {
-      setApprovingDocument(documentId)
-      const { data, error } = await supabase.rpc('approve_document', {
-        p_document_id: documentId,
-        p_admin_notes: 'Document approved by admin'
-      })
-
-      if (error) throw error
-      
-      // Refresh documents
-      await fetchApplicationDocuments()
-      alert('Document approved successfully!')
-    } catch (error) {
-      console.error('Error approving document:', error)
-      alert('Failed to approve document')
-    } finally {
-      setApprovingDocument(null)
-    }
-  }
-
-  const getFileIcon = (fileName) => {
-    const extension = fileName.split('.').pop()?.toLowerCase()
-    if (['pdf'].includes(extension)) return '📄'
-    if (['jpg', 'jpeg', 'png', 'gif'].includes(extension)) return '🖼️'
-    if (['doc', 'docx'].includes(extension)) return '📝'
-    if (['xls', 'xlsx'].includes(extension)) return '📊'
-    return '📎'
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={onBack}
-            className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            ← Back to Applications
-          </button>
-          
-          {(application.status === 'documents_pending' || application.status === 'under_review') && (
-            <button
-              onClick={() => onApprove(application.id)}
-              className="inline-flex items-center px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Approve Full Application
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {application.user_first_name} {application.user_last_name}
-            </h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center space-x-2">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <span>{application.user_email}</span>
-              </div>
-              {application.user_phone && (
-                <div className="flex items-center space-x-2">
-                  <Phone className="w-4 h-4 text-gray-400" />
-                  <span>{application.user_phone}</span>
-                </div>
-              )}
-              {application.user_company && (
-                <div className="flex items-center space-x-2">
-                  <Building className="w-4 h-4 text-gray-400" />
-                  <span>{application.user_company}</span>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold text-gray-900 mb-3">Application Status</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Status:</span>
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
-                    application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
-                    application.status === 'approved' ? 'bg-green-100 text-green-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {application.status === 'documents_pending' ? 'Pending Review' :
-                     application.status === 'under_review' ? 'Under Review' :
-                     application.status === 'approved' ? 'Approved' :
-                     application.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Submitted:</span>
-                  <span className="text-sm text-gray-900">
-                    {application.submitted_at ? 
-                      new Date(application.submitted_at).toLocaleDateString() :
-                      'Not submitted'
-                    }
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Documents:</span>
-                  <span className="text-sm text-gray-900">{application.document_count || 0} files</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {application.notes && (
-          <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-            <h4 className="font-semibold text-blue-900 mb-2">Application Notes</h4>
-            <p className="text-blue-800 text-sm">{application.notes}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Documents Section */}
-      <div className="bg-white rounded-xl shadow-lg">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Uploaded Documents</h3>
-          <p className="text-sm text-gray-600 mt-1">Review and approve individual documents</p>
-        </div>
-
-        <div className="p-6">
-          {loadingDocuments ? (
-            <div className="text-center py-8">
-              <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading documents...</p>
-            </div>
-          ) : documents.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No documents uploaded</h3>
-              <p className="mt-1 text-sm text-gray-500">This applicant hasn't uploaded any documents yet.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {documents.map((doc) => (
-                <div key={doc.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="text-2xl">{getFileIcon(doc.file_name)}</div>
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{doc.doc_name}</h4>
-                        <p className="text-sm text-gray-600">{doc.file_name}</p>
-                        <p className="text-xs text-gray-500">
-                          Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center space-x-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        doc.status === 'approved' ? 'bg-green-100 text-green-800' :
-                        doc.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {doc.status === 'approved' ? 'Approved' :
-                         doc.status === 'rejected' ? 'Rejected' :
-                         'Pending Review'}
-                      </span>
-                      
-                      {doc.signed_url && (
-                        <a
-                          href={doc.signed_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-                        >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
-                        </a>
-                      )}
-                      
-                      {doc.status !== 'approved' && (
-                        <button
-                          onClick={() => handleApproveDocument(doc.id)}
-                          disabled={approvingDocument === doc.id}
-                          className="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors disabled:opacity-50"
-                        >
-                          {approvingDocument === doc.id ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin mr-1" />
-                              Approving...
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 mr-1" />
-                              Approve
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )
