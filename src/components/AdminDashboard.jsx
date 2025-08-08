@@ -15,7 +15,6 @@ export default function AdminDashboard() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [selectedApplication, setSelectedApplication] = useState(null)
   const [applicationDocuments, setApplicationDocuments] = useState([])
   const [loadingDocuments, setLoadingDocuments] = useState(false)
 
