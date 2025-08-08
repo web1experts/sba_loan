@@ -26,25 +26,26 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
     setSubmitting(true)
 
     try {
-      // Create or update application status
-      const { error } = await supabase
-        .from('application_status')
-        .upsert({
-          user_id: user.id,
-          status: 'documents_pending',
-          stage: 'documentation',
-          notes: `Application submitted with ${documents.length} documents`,
-          updated_by: user.id,
-          updated_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
-        })
+      // Get current authenticated user to ensure we have the latest auth state
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !currentUser) {
+        throw new Error('Authentication required. Please log in again.')
+      }
+
+      // Use the safe upsert function
+      const { data, error } = await supabase.rpc('upsert_application_status', {
+        p_user_id: currentUser.id,
+        p_status: 'documents_pending',
+        p_stage: 'documentation',
+        p_notes: `Application submitted with ${documents.length} documents`
+      })
 
       if (error) {
+        console.error('Application submission error:', error)
         throw new Error(`Failed to submit application: ${error.message}`)
       }
 
+      console.log('Application submitted successfully:', data)
       setSubmitted(true)
       
       // Show success for 3 seconds then redirect
@@ -54,7 +55,7 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
 
     } catch (error) {
       console.error('Application submission error:', error)
-      alert(error.message)
+      alert(`Failed to submit application: ${error.message}. Please try again or contact support.`)
     } finally {
       setSubmitting(false)
     }
