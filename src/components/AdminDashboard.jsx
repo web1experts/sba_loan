@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { LogOut, Users, FileText, Calendar, BarChart3, Menu, X, Bell, ChevronDown, CheckCircle2, Eye, Download, User, Building, Mail, Phone, Clock, MapPin } from 'lucide-react'
+import { LogOut, Users, FileText, BarChart3, Settings, Menu, X, Bell, ChevronDown, Search, Filter, Eye, CheckCircle, XCircle, Clock, AlertCircle, Download, Trash2, ExternalLink } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import AssistantChat from './AssistantChat'
 
@@ -15,6 +15,9 @@ export default function AdminDashboard() {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [selectedApplication, setSelectedApplication] = useState(null)
+  const [applicationDocuments, setApplicationDocuments] = useState([])
+  const [loadingDocuments, setLoadingDocuments] = useState(false)
 
   useEffect(() => {
     fetchAllData()
@@ -38,47 +41,76 @@ export default function AdminDashboard() {
 
   const fetchAllData = async () => {
     setLoading(true)
-    try {
-      await Promise.all([
+      console.log('Fetching applications...')
+      
+      // Use the new admin applications function
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_admin_applications')
         fetchApplications(),
         fetchBorrowers(),
         fetchMeetings(),
         fetchReferralLeads()
-      ])
-    } catch (error) {
-      console.error('Error fetching data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchApplications = async () => {
-    try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-      if (authError || !currentUser) {
-        console.error('Admin auth error:', authError)
-        setApplications([])
-        return
-      }
-
-      // Check if user has admin role
-      const userRole = currentUser.user_metadata?.role
-      if (userRole !== 'admin') {
-        console.error('Access denied: User is not admin')
-        setApplications([])
-        return
-      }
-
-      // Use the submitted applications function
-      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
-
-      if (error) throw error
+        throw new Error(`Failed to fetch applications: ${rpcError.message}`)
       
-      console.log('Fetched submitted applications:', data) // Debug log
+        console.log('Applications fetched successfully:', rpcData)
+        setApplications(rpcData || [])
       setApplications(data || [])
     } catch (error) {
       console.error('Error fetching applications:', error)
+      // Try fallback query
+      try {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('application_status')
+          .select(`
+            id,
+            user_id,
+            status,
+            stage,
+            submitted_at,
+            folder_name,
+            notes,
+            created_at,
+            updated_at
+          `)
+          .not('submitted_at', 'is', null)
+          .order('submitted_at', { ascending: false })
+        
+        if (fallbackError) {
+          console.error('Fallback query failed:', fallbackError)
+          return
+        }
+        
+        console.log('Using fallback data:', fallbackData)
+        
+        // Transform fallback data
+        const transformedData = await Promise.all(
+          (fallbackData || []).map(async (app) => {
+            // Get user profile
+            const { data: profile } = await supabase
+              .from('user_profiles')
+              .select('first_name, last_name, email')
+              .eq('id', app.user_id)
+              .single()
+            
+            // Get document count
+            const { count } = await supabase
+              .from('documents')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', app.user_id)
+            
+            return {
+              ...app,
+              borrower_name: profile ? `${profile.first_name} ${profile.last_name}` : 'Unknown User',
+              email: profile?.email || 'No email',
+              document_count: count || 0
+            }
+          })
+        )
+        
+        setApplications(transformedData)
+      } catch (fallbackError) {
+        console.error('Fallback failed:', fallbackError)
+        setApplications([])
+      }
       
       // Fallback: try direct query if RPC fails
       try {
@@ -102,41 +134,39 @@ export default function AdminDashboard() {
         }
       } catch (fallbackErr) {
         console.error('Complete failure to fetch applications:', fallbackErr)
-        setApplications([])
-      }
-    }
-  }
-
-  const fetchBorrowers = async () => {
-    try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-      if (authError || !currentUser) {
-        console.error('Admin auth error:', authError)
-        setBorrowers([])
-        return
-      }
-
-      // Check if user has admin role
-      const userRole = currentUser.user_metadata?.role
-      if (userRole !== 'admin') {
-        console.error('Access denied: User is not admin')
-        setBorrowers([])
-        return
-      }
-
       // Get approved applications only
-      const { data, error } = await supabase.rpc('get_submitted_applications_for_admin')
-
-      if (error) throw error
+      const { data, error } = await supabase
+        .from('application_status')
+        .select(`
+          user_id,
+          status,
+          updated_at,
+          user_profiles!inner(first_name, last_name, email, phone, company)
+        `)
+        .eq('status', 'approved')
+        .order('updated_at', { ascending: false })
       
-      // Filter only approved applications
-      const approvedBorrowers = (data || []).filter(app => app.status === 'approved')
+      if (error) {
+        console.error('Error fetching approved borrowers:', error)
+        return
+      }
       
-      console.log('Fetched approved borrowers:', approvedBorrowers) // Debug log
-      setBorrowers(approvedBorrowers)
+      const transformedData = (data || []).map(app => ({
+        id: app.user_id,
+        name: `${app.user_profiles.first_name} ${app.user_profiles.last_name}`,
+        email: app.user_profiles.email,
+        phone: app.user_profiles.phone || 'Not provided',
+        company: app.user_profiles.company || 'Not provided',
+        status: app.status,
+        approved_at: app.updated_at,
+        loan_amount: 'Not specified'
+      }))
+      
+      console.log('Approved borrowers:', transformedData)
+      setBorrowers(transformedData)
     } catch (error) {
       console.error('Error fetching borrowers:', error)
+      setBorrowers([])
       
       // Fallback: try direct query if RPC fails
       try {
@@ -245,6 +275,120 @@ export default function AdminDashboard() {
       setReferralLeads(data || [])
     } catch (error) {
       console.error('Error fetching referral leads:', error)
+    }
+  }
+
+  const fetchApplicationDocuments = async (userId) => {
+    setLoadingDocuments(true)
+    try {
+      console.log('Fetching documents for user:', userId)
+      
+      // Use the new function to get documents with signed URLs
+      const { data, error } = await supabase.rpc('get_application_documents_with_urls', {
+        p_user_id: userId
+      })
+      
+      if (error) {
+        console.error('Error fetching application documents:', error)
+        // Fallback to direct query
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('documents')
+          .select('*')
+          .eq('user_id', userId)
+          .order('uploaded_at', { ascending: false })
+        
+        if (fallbackError) {
+          console.error('Fallback document query failed:', fallbackError)
+          setApplicationDocuments([])
+          return
+        }
+        
+        setApplicationDocuments(fallbackData || [])
+      } else {
+        console.log('Documents fetched:', data)
+        setApplicationDocuments(data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching documents:', error)
+      setApplicationDocuments([])
+    } finally {
+      setLoadingDocuments(false)
+    }
+  }
+
+  const handleViewApplication = async (application) => {
+    console.log('Viewing application:', application)
+    setSelectedApplication(application)
+    await fetchApplicationDocuments(application.user_id)
+  }
+
+  const handleApproveApplication = async (userId) => {
+    try {
+      console.log('Approving application for user:', userId)
+      
+      const { data, error } = await supabase.rpc('approve_application', {
+        p_user_id: userId
+      })
+      
+      if (error) {
+        console.error('Error approving application:', error)
+        alert(`Failed to approve application: ${error.message}`)
+        return
+      }
+      
+      console.log('Application approved successfully:', data)
+      alert('Application approved successfully!')
+      
+      // Refresh data
+      await fetchAllData()
+      setSelectedApplication(null)
+    } catch (error) {
+      console.error('Error approving application:', error)
+      alert(`Failed to approve application: ${error.message}`)
+    }
+  }
+
+  const handleApproveDocument = async (documentId) => {
+    try {
+      console.log('Approving document:', documentId)
+      
+      const { data, error } = await supabase.rpc('approve_document', {
+        p_document_id: documentId
+      })
+      
+      if (error) {
+        console.error('Error approving document:', error)
+        alert(`Failed to approve document: ${error.message}`)
+        return
+      }
+      
+      console.log('Document approved successfully:', data)
+      
+      // Refresh documents
+      if (selectedApplication) {
+        await fetchApplicationDocuments(selectedApplication.user_id)
+      }
+    } catch (error) {
+      console.error('Error approving document:', error)
+      alert(`Failed to approve document: ${error.message}`)
+    }
+  }
+
+  const generateSignedUrl = async (filePath) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('borrower-docs')
+        .createSignedUrl(filePath, 3600) // 1 hour expiry
+      
+      if (error) {
+        console.error('Error generating signed URL:', error)
+        return null
+      }
+      
+      return data.signedUrl
+    } catch (error) {
+      console.error('Error generating signed URL:', error)
+      return null
     }
   }
 

@@ -20,6 +20,22 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
   const missingCategories = requiredCategories.filter(cat => !uploadedCategories.includes(cat))
   const canSubmit = missingCategories.length === 0 && documents.length >= 5
 
+  // Generate folder name in format: firstname_lastname_email_userid
+  const generateFolderName = () => {
+    const firstName = userProfile?.first_name || user?.user_metadata?.first_name || 'user'
+    const lastName = userProfile?.last_name || user?.user_metadata?.last_name || 'unknown'
+    const email = user?.email || 'noemail'
+    const userId = user?.id || 'noid'
+    
+    // Clean and format the components
+    const cleanFirstName = firstName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const cleanLastName = lastName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const cleanEmail = email.toLowerCase().replace(/[^a-z0-9@.]/g, '')
+    const cleanUserId = userId.replace(/[^a-z0-9]/g, '')
+    
+    return `${cleanFirstName}_${cleanLastName}_${cleanEmail}_${cleanUserId}`
+  }
+
   const handleSubmitApplication = async () => {
     if (!user || !canSubmit) return
 
@@ -32,10 +48,35 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
         throw new Error('Authentication required. Please log in again.')
       }
 
-      // Use the complete submission function
-      const { data, error } = await supabase.rpc('submit_application_for_review', {
+      console.log('Submitting application for user:', currentUser.id)
+      console.log('Document count:', documents.length)
+      console.log('User profile:', userProfile)
+
+      // Generate folder name
+      const folderName = generateFolderName()
+      console.log('Generated folder name:', folderName)
+
+      // Prepare submission data
+      const submissionData = {
+        user_id: currentUser.id,
+        email: currentUser.email,
+        first_name: userProfile?.first_name || currentUser.user_metadata?.first_name || '',
+        last_name: userProfile?.last_name || currentUser.user_metadata?.last_name || '',
+        phone: userProfile?.phone || '',
+        company: userProfile?.company || '',
+        document_categories: uploadedCategories,
+        total_documents: documents.length,
+        submission_timestamp: new Date().toISOString()
+      }
+
+      console.log('Submission data:', submissionData)
+
+      // Submit application using the new function
+      const { data, error } = await supabase.rpc('submit_borrower_application', {
         p_user_id: currentUser.id,
-        p_document_count: documents.length
+        p_document_count: documents.length,
+        p_folder_name: folderName,
+        p_submission_data: submissionData
       })
 
       if (error) {
