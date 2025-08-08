@@ -24,47 +24,17 @@ export default function AdminDashboard() {
     
     // Set up real-time subscription for meetings
     const meetingsSubscription = supabase
-      .channel('meetings_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'meetings' },
-        (payload) => {
-          console.log('Meeting change detected:', payload)
-          fetchMeetings() // Refresh meetings when changes occur
-        }
-      )
-      .subscribe()
-
-    return () => {
-      meetingsSubscription.unsubscribe()
-    }
-  }, [])
-
-  const fetchAllData = async () => {
-    setLoading(true)
-      console.log('Fetching applications...')
+      console.log('Fetching submitted applications...')
       
-      // Use the new admin applications function
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_admin_applications')
-        fetchApplications(),
-        fetchBorrowers(),
-        fetchMeetings(),
-        fetchReferralLeads()
-        throw new Error(`Failed to fetch applications: ${rpcError.message}`)
+      const { data, error } = await supabase.rpc('get_admin_submissions')
       
-        console.log('Applications fetched successfully:', rpcData)
-        setApplications(rpcData || [])
-      setApplications(data || [])
-    } catch (error) {
-      console.error('Error fetching applications:', error)
-      // Try fallback query
-      try {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            id,
-            user_id,
-            status,
-            stage,
+      if (error) {
+        console.error('Error fetching applications:', error)
+        setApplications([])
+      } else {
+        console.log('Applications fetched:', data)
+        setApplications(data || [])
+      }
             submitted_at,
             folder_name,
             notes,
@@ -159,46 +129,31 @@ export default function AdminDashboard() {
         company: app.user_profiles.company || 'Not provided',
         status: app.status,
         approved_at: app.updated_at,
-        loan_amount: 'Not specified'
-      }))
+      console.log('Fetching approved borrowers...')
       
-      console.log('Approved borrowers:', transformedData)
-      setBorrowers(transformedData)
-    } catch (error) {
-      console.error('Error fetching borrowers:', error)
-      setBorrowers([])
+      const { data, error } = await supabase.rpc('get_admin_submissions')
       
-      // Fallback: try direct query if RPC fails
-      try {
-        console.log('Trying fallback query for borrowers...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            *,
-            user_profiles(*)
-          `)
-          .eq('status', 'approved')
-          .whereNotNull('submitted_at')
-          .order('updated_at', { ascending: false })
-
-        if (fallbackError) {
-          console.error('Fallback query failed:', fallbackError)
-          setBorrowers([])
-        } else {
-          console.log('Fallback query successful:', fallbackData)
-          setBorrowers(fallbackData || [])
-        }
-      } catch (fallbackErr) {
-        console.error('Complete failure to fetch borrowers:', fallbackErr)
+      if (error) {
+        console.error('Error fetching borrowers:', error)
         setBorrowers([])
+      } else {
+        // Filter only approved applications
+        const approvedBorrowers = (data || [])
+          .filter(app => app.status === 'approved')
+          .map(app => ({
+            id: app.user_id,
+            name: app.borrower_name,
+            email: app.borrower_email,
+            phone: app.phone,
+            company: app.company,
+            status: app.status,
+            approved_at: app.reviewed_at,
+            loan_amount: 'Not specified'
+          }))
+        
+        console.log('Approved borrowers:', approvedBorrowers)
+        setBorrowers(approvedBorrowers)
       }
-    }
-  }
-
-  const fetchMeetings = async () => {
-    try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
       if (authError || !currentUser) {
         console.error('Admin auth error:', authError)
         setMeetings([])
@@ -401,14 +356,18 @@ export default function AdminDashboard() {
 
   const handleApproveApplication = async (applicationId) => {
     try {
+      console.log('Approving application:', applicationId)
+      
       const { data, error } = await supabase.rpc('approve_application', {
-        p_application_id: applicationId,
+        p_submission_id: applicationId
         p_admin_notes: 'Application approved by admin'
       })
 
+        console.error('Error approving application:', error)
       if (error) throw error
       
       await fetchAllData()
+      console.log('Application approved successfully:', data)
       alert('Application approved successfully!')
     } catch (error) {
       console.error('Error approving application:', error)
@@ -1040,7 +999,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                       <div className="text-sm text-gray-900 max-w-xs truncate" title={meeting.notes}>
                         {meeting.notes || 'No notes'}
                       </div>
-                    </td>
+                      {new Date(app.submitted_at).toLocaleDateString()}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                         meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
@@ -1057,7 +1016,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                             onClick={() => onUpdateStatus(meeting.id, 'completed')}
                             className="text-green-600 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50"
                           >
-                            Complete
+                      {app.status === 'submitted' && (
                           </button>
                           <button
                             onClick={() => onUpdateStatus(meeting.id, 'cancelled')}

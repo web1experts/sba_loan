@@ -56,27 +56,30 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
       const folderName = generateFolderName()
       console.log('Generated folder name:', folderName)
 
-      // Prepare submission data
-      const submissionData = {
-        user_id: currentUser.id,
+      // Prepare borrower name
+      const firstName = userProfile?.first_name || currentUser.user_metadata?.first_name || ''
+      const lastName = userProfile?.last_name || currentUser.user_metadata?.last_name || ''
+      const borrowerName = `${firstName} ${lastName}`.trim() || 'Unknown'
+
+      console.log('Submitting application with data:', {
+        borrowerName,
         email: currentUser.email,
-        first_name: userProfile?.first_name || currentUser.user_metadata?.first_name || '',
-        last_name: userProfile?.last_name || currentUser.user_metadata?.last_name || '',
         phone: userProfile?.phone || '',
         company: userProfile?.company || '',
-        document_categories: uploadedCategories,
-        total_documents: documents.length,
-        submission_timestamp: new Date().toISOString()
-      }
+        folderName,
+        documentCount: documents.length,
+        categories: uploadedCategories
+      })
 
-      console.log('Submission data:', submissionData)
-
-      // Submit application using the new function
-      const { data, error } = await supabase.rpc('submit_borrower_application', {
-        p_user_id: currentUser.id,
+      // Submit application using the simple function
+      const { data, error } = await supabase.rpc('submit_application', {
+        p_borrower_name: borrowerName,
+        p_borrower_email: currentUser.email,
+        p_phone: userProfile?.phone || '',
+        p_company: userProfile?.company || '',
+        p_document_folder: folderName,
         p_document_count: documents.length,
-        p_folder_name: folderName,
-        p_submission_data: submissionData
+        p_document_categories: uploadedCategories
       })
 
       if (error) {
