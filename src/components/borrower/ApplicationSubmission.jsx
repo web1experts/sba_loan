@@ -35,7 +35,8 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
           stage: 'documentation',
           notes: `Application submitted with ${documents.length} documents`,
           updated_by: user.id,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          created_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
         })

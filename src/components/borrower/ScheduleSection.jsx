@@ -51,9 +51,10 @@ export default function ScheduleSection() {
         user_id: user.id,
         meeting_date: activeTab === 'callback' ? new Date().toISOString().split('T')[0] : selectedDate,
         meeting_time: activeTab === 'callback' ? (preferredTime || 'ASAP') : selectedTime,
-        meeting_type: activeTab === 'callback' ? 'phone' : 'in-person',
+        meeting_type: activeTab === 'callback' ? 'callback' : 'in-person',
         purpose: purpose,
-        notes: activeTab === 'callback' ? `${notes}\nPhone: ${phoneNumber}\nPreferred Time: ${preferredTime}` : notes,
+        notes: activeTab === 'callback' ? `${notes}\nPhone: ${phoneNumber}\nPreferred Time: ${preferredTime}`.trim() : notes,
+        contact_info: activeTab === 'callback' ? phoneNumber : '',
         status: 'scheduled',
         created_at: new Date().toISOString()
       }

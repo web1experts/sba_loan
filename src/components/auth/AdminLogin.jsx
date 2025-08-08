@@ -42,15 +42,6 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
-      {/* Home Button */}
-      <Link
-        to="/"
-        className="absolute top-6 left-6 inline-flex items-center px-4 py-2 bg-white/80 backdrop-blur-sm text-gray-700 rounded-xl font-medium hover:bg-white transition-all duration-200 shadow-lg hover:shadow-xl border border-white/20"
-      >
-        <Home className="w-4 h-4 mr-2" />
-        Home
-      </Link>
-      
       <div className="max-w-md w-full space-y-8">
         <div>
           <div className="flex justify-center mb-6">

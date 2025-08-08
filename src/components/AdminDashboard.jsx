@@ -157,7 +157,7 @@ export default function AdminDashboard() {
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'applications', label: 'Applications', icon: FileText },
     { id: 'borrowers', label: 'Borrower List', icon: Users },
-    { id: 'meetings', label: 'Meeting Management', icon: Calendar },
+    { id: 'meetings', label: 'Customer Scheduled Meetings', icon: Calendar },
     { id: 'referrals', label: 'Referral Leads', icon: Users }
   ]
 
