@@ -160,7 +160,11 @@ export default function AdminDashboard() {
         .from('referral_leads')
         .select(`
           *,
-          user_profiles!inner(*)
+          users!referral_leads_referral_user_id_fkey(
+            id,
+            email,
+            user_profiles(*)
+          )
         `)
         .order('created_at', { ascending: false })
 
@@ -891,7 +895,7 @@ function ReferralLeadsSection({ referralLeads }) {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">
-                    {lead.user_profiles?.first_name} {lead.user_profiles?.last_name}
+                    {lead.users?.user_profiles?.first_name} {lead.users?.user_profiles?.last_name}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
