@@ -56,14 +56,18 @@ export default function AdminDashboard() {
     try {
       console.log('Fetching applications...')
       
-      // First, let's try to get all application_status records to see what we have
+      // First, get all application_status records
       const { data: allApps, error: allError } = await supabase
         .from('application_status')
         .select('*')
         .order('created_at', { ascending: false })
 
       console.log('All application_status records:', allApps)
-      if (allError) console.error('Error fetching all applications:', allError)
+      if (allError) {
+        console.error('Error fetching all applications:', allError)
+        setApplications([])
+        return
+      }
 
       if (!allApps || allApps.length === 0) {
         console.log('No applications found')
@@ -75,6 +79,12 @@ export default function AdminDashboard() {
       const userIds = [...new Set(allApps.map(app => app.user_id).filter(Boolean))]
       console.log('User IDs from applications:', userIds)
 
+      if (userIds.length === 0) {
+        console.log('No user IDs found in applications')
+        setApplications(allApps.map(app => ({ ...app, user_profiles: null })))
+        return
+      }
+
       // Fetch user profiles for these users
       const { data: profiles, error: profilesError } = await supabase
         .from('user_profiles')
@@ -84,17 +94,6 @@ export default function AdminDashboard() {
       console.log('User profiles fetched:', profiles)
       if (profilesError) {
         console.error('Error fetching user profiles:', profilesError)
-      }
-
-      // Also try to get user data from auth.users if profiles are missing
-      const { data: authUsers, error: authError } = await supabase
-        .from('application_status')
-        .select('user_id')
-        .in('id', allApps.map(app => app.id))
-
-      console.log('Auth users check:', authUsers)
-      if (authError) {
-        console.error('Auth users error:', authError)
       }
 
       // Create a map of user profiles for quick lookup
@@ -122,25 +121,13 @@ export default function AdminDashboard() {
       setApplications([])
     }
   }
-        return
-      }
-      
-      setApplications(data || [])
-    } catch (error) {
-      console.error('Error fetching applications:', error)
-      setApplications([])
-    }
-  }
 
   const fetchBorrowers = async () => {
     try {
       console.log('Fetching borrowers...')
       const { data, error } = await supabase
         .from('application_status')
-        .select(`
-          *,
-          user_profiles(*)
-        `)
+        .select('*')
         .in('status', ['approved', 'funded'])
         .order('updated_at', { ascending: false })
 
@@ -150,7 +137,44 @@ export default function AdminDashboard() {
         setBorrowers([])
         return
       }
-      setBorrowers(data || [])
+
+      if (!data || data.length === 0) {
+        setBorrowers([])
+        return
+      }
+
+      // Get user profiles for borrowers
+      const userIds = [...new Set(data.map(app => app.user_id).filter(Boolean))]
+      
+      if (userIds.length === 0) {
+        setBorrowers(data.map(app => ({ ...app, user_profiles: null })))
+        return
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', userIds)
+
+      if (profilesError) {
+        console.error('Error fetching borrower profiles:', profilesError)
+      }
+
+      // Create profile map
+      const profileMap = {}
+      if (profiles) {
+        profiles.forEach(profile => {
+          profileMap[profile.id] = profile
+        })
+      }
+
+      // Merge data
+      const borrowersWithProfiles = data.map(app => ({
+        ...app,
+        user_profiles: profileMap[app.user_id] || null
+      }))
+
+      setBorrowers(borrowersWithProfiles)
     } catch (error) {
       console.error('Error fetching borrowers:', error)
       setBorrowers([])
@@ -175,51 +199,59 @@ export default function AdminDashboard() {
         return
       }
 
-      // Use the custom function for better data retrieval
-      const { data, error } = await supabase
-        .rpc('get_meetings_for_admin')
+      // Fetch meetings
+      const { data: meetingsData, error: meetingsError } = await supabase
+        .from('meetings')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-      if (error) throw error
-      console.log('Fetched meetings:', data) // Debug log
+      if (meetingsError) {
+        console.error('Error fetching meetings:', meetingsError)
+        setMeetings([])
+        return
+      }
+
+      if (!meetingsData || meetingsData.length === 0) {
+        setMeetings([])
+        return
+      }
+
+      // Get user profiles for meetings
+      const userIds = [...new Set(meetingsData.map(meeting => meeting.user_id).filter(Boolean))]
       
-      // Transform the data to match expected format
-      const transformedData = (data || []).map(meeting => ({
+      if (userIds.length === 0) {
+        setMeetings(meetingsData.map(meeting => ({ ...meeting, user_profiles: null })))
+        return
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', userIds)
+
+      if (profilesError) {
+        console.error('Error fetching meeting user profiles:', profilesError)
+      }
+
+      // Create profile map
+      const profileMap = {}
+      if (profiles) {
+        profiles.forEach(profile => {
+          profileMap[profile.id] = profile
+        })
+      }
+
+      // Merge data
+      const meetingsWithProfiles = meetingsData.map(meeting => ({
         ...meeting,
-        user_profiles: {
-          first_name: meeting.user_first_name,
-          last_name: meeting.user_last_name,
-          email: meeting.user_email,
-          phone: meeting.user_phone,
-          company: meeting.user_company
-        }
+        user_profiles: profileMap[meeting.user_id] || null
       }))
-      
-      setMeetings(transformedData)
+
+      console.log('Fetched meetings with profiles:', meetingsWithProfiles)
+      setMeetings(meetingsWithProfiles)
     } catch (error) {
       console.error('Error fetching meetings:', error)
-      
-      // Fallback: try direct query if RPC fails
-      try {
-        console.log('Trying fallback query...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('meetings')
-          .select(`
-            *,
-            user_profiles(*)
-          `)
-          .order('created_at', { ascending: false })
-
-        if (fallbackError) {
-          console.error('Fallback query failed:', fallbackError)
-          setMeetings([])
-        } else {
-          console.log('Fallback query successful:', fallbackData)
-          setMeetings(fallbackData || [])
-        }
-      } catch (fallbackErr) {
-        console.error('Complete failure to fetch meetings:', fallbackErr)
-        setMeetings([])
-      }
+      setMeetings([])
     }
   }
 
@@ -227,33 +259,57 @@ export default function AdminDashboard() {
     try {
       console.log('Fetching referral leads...')
       
-      // First try simple query to see if we have any referral leads
-      const { data: simpleLeads, error: simpleError } = await supabase
+      // First get referral leads
+      const { data: leadsData, error: leadsError } = await supabase
         .from('referral_leads')
         .select('*')
         .order('created_at', { ascending: false })
 
-      console.log('Simple referral leads:', simpleLeads)
-      if (simpleError) console.error('Simple referral leads error:', simpleError)
-
-      // Try with user relationship
-      const { data, error } = await supabase
-        .from('referral_leads')
-        .select(`
-          *,
-          user_profiles!inner(*)
-        `)
-        .eq('user_profiles.id', 'referral_leads.referral_user_id')
-        .order('created_at', { ascending: false })
-
-      console.log('Referral leads with profiles:', data)
-      if (error) {
-        console.error('Error fetching referral leads with profiles:', error)
-        // Use simple data as fallback
-        setReferralLeads(simpleLeads || [])
+      console.log('Referral leads data:', leadsData)
+      if (leadsError) {
+        console.error('Error fetching referral leads:', leadsError)
+        setReferralLeads([])
         return
       }
-      setReferralLeads(data || [])
+
+      if (!leadsData || leadsData.length === 0) {
+        setReferralLeads([])
+        return
+      }
+
+      // Get user profiles for referral users
+      const userIds = [...new Set(leadsData.map(lead => lead.referral_user_id).filter(Boolean))]
+      
+      if (userIds.length === 0) {
+        setReferralLeads(leadsData.map(lead => ({ ...lead, user_profiles: null })))
+        return
+      }
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', userIds)
+
+      if (profilesError) {
+        console.error('Error fetching referral user profiles:', profilesError)
+      }
+
+      // Create profile map
+      const profileMap = {}
+      if (profiles) {
+        profiles.forEach(profile => {
+          profileMap[profile.id] = profile
+        })
+      }
+
+      // Merge data
+      const leadsWithProfiles = leadsData.map(lead => ({
+        ...lead,
+        user_profiles: profileMap[lead.referral_user_id] || null
+      }))
+
+      console.log('Final referral leads with profiles:', leadsWithProfiles)
+      setReferralLeads(leadsWithProfiles)
     } catch (error) {
       console.error('Error fetching referral leads:', error)
       setReferralLeads([])
@@ -353,27 +409,11 @@ export default function AdminDashboard() {
         {/* Sidebar Header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 bg-gradient-to-r from-gray-700 to-gray-900 flex-shrink-0">
           <div className="flex items-center space-x-3">
-  console.log('ApplicationDetailsModal received application:', application)
-  
-  if (!application) {
-    return null
-  }
-
-  const userProfile = application.user_profiles
-  const displayName = userProfile ? 
-    `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Unknown User' :
-    'Unknown User'
-  const displayEmail = userProfile?.email || 'No email available'
-  const displayCompany = userProfile?.company || 'Not specified'
-  const displayPhone = userProfile?.phone || 'Not provided'
-
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
               <BarChart3 className="h-4 w-4 text-white" />
             </div>
             <h1 className="text-lg font-bold text-white">Admin Panel</h1>
-          <h3 className="text-xl font-bold text-white">
-            Application Details - {displayName}
-          </h3>
+          </div>
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
@@ -555,15 +595,15 @@ function OverviewSection({ stats }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat) => {
           const Icon = stat.icon
-                  <p className="text-gray-900">{displayEmail}</p>
-                  <p className="text-gray-900">{displayName}</p>
+          return (
+            <div key={stat.name} className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/30">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-gray-900">{displayPhone}</p>
+                  <p className="text-sm font-medium text-gray-600 mb-1">{stat.name}</p>
                   <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 </div>
                 <div className={`w-12 h-12 bg-gradient-to-br ${stat.bgColor} rounded-xl flex items-center justify-center shadow-md`}>
-                  <p className="text-gray-900">{displayCompany}</p>
+                  <Icon className={`w-6 h-6 bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`} />
                 </div>
               </div>
             </div>
@@ -622,7 +662,7 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {applications.map((application) => (
+              {applications.map((application) => {
                 console.log('Rendering application:', application)
                 const userProfile = application.user_profiles
                 const displayName = userProfile ? 
@@ -631,60 +671,64 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                 const displayEmail = userProfile?.email || 'No email available'
                 const displayCompany = userProfile?.company || 'Not specified'
                 
-                <tr key={application.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                        <User className="w-5 h-5 text-gray-600" />
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {application.user_profiles?.first_name || 'Unknown'} {application.user_profiles?.last_name || 'User'}
+                return (
+                  <tr key={application.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                          <User className="w-5 h-5 text-gray-600" />
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {application.user_profiles?.email || 'No email available'}
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {displayName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {displayEmail}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {application.user_profiles?.company || 'Not specified'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
-                      application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
-                      application.status === 'submitted' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {application.status === 'documents_pending' ? 'Pending Review' :
-                       application.status === 'under_review' ? 'Under Review' :
-                       application.status === 'submitted' ? 'Submitted' :
-                       application.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {application.submitted_at ? 
-                      new Date(application.submitted_at).toLocaleDateString() :
-                      new Date(application.created_at).toLocaleDateString()
-                    }
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <button
-                      onClick={() => setSelectedApplication(application)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => onApprove(application.id)}
-                      className="text-green-600 hover:text-green-900"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {displayCompany}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                        application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                        application.status === 'submitted' ? 'bg-green-100 text-green-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {application.status === 'documents_pending' ? 'Pending Review' :
+                         application.status === 'under_review' ? 'Under Review' :
+                         application.status === 'submitted' ? 'Submitted' :
+                         application.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {application.submitted_at ? 
+                        new Date(application.submitted_at).toLocaleDateString() :
+                        new Date(application.created_at).toLocaleDateString()
+                      }
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                      <button
+                        onClick={() => setSelectedApplication(application)}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="View Application Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => onApprove(application.id)}
+                        className="text-green-600 hover:text-green-900"
+                        title="Approve Application"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -875,88 +919,94 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredMeetings.map((meeting) => (
-                  <tr key={meeting.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                          meeting.meeting_type === 'callback' ? 'bg-green-100' : 'bg-blue-100'
+                {filteredMeetings.map((meeting) => {
+                  const userProfile = meeting.user_profiles
+                  const displayName = userProfile ? 
+                    `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Unknown User' :
+                    'Unknown User'
+                  const displayEmail = userProfile?.email || 'No email available'
+                  
+                  return (
+                    <tr key={meeting.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            meeting.meeting_type === 'callback' ? 'bg-green-100' : 'bg-blue-100'
+                          }`}>
+                            <User className={`w-5 h-5 ${
+                              meeting.meeting_type === 'callback' ? 'text-green-600' : 'text-blue-600'
+                            }`} />
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {displayName}
+                            </div>
+                            <div className="text-sm text-gray-500">{displayEmail}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {meeting.meeting_type === 'callback' ? (
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{meeting.contact_info}</div>
+                            <div className="text-sm text-gray-500">Preferred: {meeting.meeting_time}</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-sm text-gray-900">
+                              {new Date(meeting.meeting_date).toLocaleDateString()}
+                            </div>
+                            <div className="text-sm text-gray-500">{meeting.meeting_time}</div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center text-sm text-gray-900">
+                          {meeting.meeting_type === 'callback' && <Phone className="w-4 h-4 mr-1 text-green-600" />}
+                          {meeting.meeting_type === 'in-person' && <MapPin className="w-4 h-4 mr-1 text-blue-600" />}
+                          <span className="capitalize">
+                            {meeting.meeting_type === 'callback' ? 'Call Back Request' : 'In-Person Meeting'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {meeting.purpose}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900 max-w-xs truncate" title={meeting.notes}>
+                          {meeting.notes || 'No notes'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
+                          meeting.status === 'completed' ? 'bg-green-100 text-green-800' :
+                          'bg-red-100 text-red-800'
                         }`}>
-                          <User className={`w-5 h-5 ${
-                            meeting.meeting_type === 'callback' ? 'text-green-600' : 'text-blue-600'
-                          }`} />
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {displayName}
-                          </div>
-                          <div className="text-sm text-gray-500">{meeting.user_profiles?.email || 'No email'}</div>
-                            {displayEmail}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {meeting.meeting_type === 'callback' ? (
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{meeting.contact_info}</div>
-                          <div className="text-sm text-gray-500">Preferred: {meeting.meeting_time}</div>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="text-sm text-gray-900">
-                            {new Date(meeting.meeting_date).toLocaleDateString()}
-                          </div>
-                          <div className="text-sm text-gray-500">{meeting.meeting_time}</div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center text-sm text-gray-900">
-                        {meeting.meeting_type === 'callback' && <Phone className="w-4 h-4 mr-1 text-green-600" />}
-                        {meeting.meeting_type === 'in-person' && <MapPin className="w-4 h-4 mr-1 text-blue-600" />}
-                        <span className="capitalize">
-                          {meeting.meeting_type === 'callback' ? 'Call Back Request' : 'In-Person Meeting'}
+                          {meeting.status}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {displayCompany}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900 max-w-xs truncate" title={meeting.notes}>
-                        {meeting.notes || 'No notes'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        meeting.status === 'scheduled' ? 'bg-blue-100 text-blue-800' :
-                        meeting.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {meeting.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                      {meeting.status === 'scheduled' && (
-                        <>
-                          <button
-                            onClick={() => onUpdateStatus(meeting.id, 'completed')}
-                            className="text-green-600 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50"
-                          >
-                            Complete
-                          </button>
-                          <button
-                            onClick={() => onUpdateStatus(meeting.id, 'cancelled')}
-                            className="text-red-600 hover:text-red-900 px-2 py-1 rounded hover:bg-red-50"
-                          >
-                            Cancel
-                        title="View Application Details"
-                        title="Approve Application"
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                        {meeting.status === 'scheduled' && (
+                          <>
+                            <button
+                              onClick={() => onUpdateStatus(meeting.id, 'completed')}
+                              className="text-green-600 hover:text-green-900 px-2 py-1 rounded hover:bg-green-50"
+                            >
+                              Complete
+                            </button>
+                            <button
+                              onClick={() => onUpdateStatus(meeting.id, 'cancelled')}
+                              className="text-red-600 hover:text-red-900 px-2 py-1 rounded hover:bg-red-50"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1027,7 +1077,7 @@ function ReferralLeadsSection({ referralLeads }) {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">
-                    {lead.users?.user_profiles?.first_name} {lead.users?.user_profiles?.last_name}
+                    {lead.user_profiles?.first_name} {lead.user_profiles?.last_name}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -1048,6 +1098,142 @@ function ReferralLeadsSection({ referralLeads }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  )
+}
+
+function ApplicationDetailsModal({ application, onClose, onApprove }) {
+  console.log('ApplicationDetailsModal received application:', application)
+  
+  if (!application) {
+    return null
+  }
+
+  const userProfile = application.user_profiles
+  const displayName = userProfile ? 
+    `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Unknown User' :
+    'Unknown User'
+  const displayEmail = userProfile?.email || 'No email available'
+  const displayCompany = userProfile?.company || 'Not specified'
+  const displayPhone = userProfile?.phone || 'Not provided'
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <h3 className="text-xl font-bold">
+            Application Details - {displayName}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <div className="space-y-6">
+            {/* Applicant Information */}
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                <User className="w-5 h-5 mr-2 text-blue-600" />
+                Applicant Information
+              </h4>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Name:</span>
+                  <span className="text-gray-900">{displayName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Email:</span>
+                  <span className="text-gray-900">{displayEmail}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Phone:</span>
+                  <span className="text-gray-900">{displayPhone}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Company:</span>
+                  <span className="text-gray-900">{displayCompany}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Application Status */}
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-green-600" />
+                Application Status
+              </h4>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Status:</span>
+                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                    application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
+                    application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
+                    application.status === 'approved' ? 'bg-green-100 text-green-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {application.status === 'documents_pending' ? 'Pending Review' :
+                     application.status === 'under_review' ? 'Under Review' :
+                     application.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Stage:</span>
+                  <span className="text-gray-900 capitalize">{application.stage || 'Not specified'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Created:</span>
+                  <span className="text-gray-900">{new Date(application.created_at).toLocaleDateString()}</span>
+                </div>
+                {application.submitted_at && (
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-700">Submitted:</span>
+                    <span className="text-gray-900">{new Date(application.submitted_at).toLocaleDateString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-700">Last Updated:</span>
+                  <span className="text-gray-900">{new Date(application.updated_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            {application.notes && (
+              <div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-3">Notes</h4>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <p className="text-gray-700">{application.notes}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 bg-gray-50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Close
+          </button>
+          {application.status !== 'approved' && (
+            <button
+              onClick={() => {
+                onApprove(application.id)
+                onClose()
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Approve Application</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
