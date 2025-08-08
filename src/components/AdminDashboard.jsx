@@ -418,6 +418,15 @@ export default function AdminDashboard() {
 
       {/* AI Assistant Chat */}
       <AssistantChat />
+      
+      {/* Application Details Modal */}
+      {selectedApplication && (
+        <ApplicationDetailsModal
+          application={selectedApplication}
+          onClose={() => setSelectedApplication(null)}
+          onApprove={handleApproveApplication}
+        />
+      )}
     </div>
   )
 }
