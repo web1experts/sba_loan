@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { LogOut, FileText, Upload, User, Calendar, BarChart3, Menu, X, Bell, ChevronDown } from 'lucide-react'
+import { LogOut, FileText, Upload, User, Calendar, BarChart3, Menu, X, Bell, ChevronDown, CheckCircle2 } from 'lucide-react'
 import JotformSection from './JotformSection'
 import DocumentUploadSection from './DocumentUploadSection'
 import LoanOfficerCard from './LoanOfficerCard'
 import ProfileSection from './ProfileSection'
 import ScheduleSection from './ScheduleSection'
 import ProgressTracker from './ProgressTracker'
+import ApplicationSubmission from './ApplicationSubmission'
 import AssistantChat from '../AssistantChat'
 import { supabase } from '../../supabaseClient'
 
@@ -77,7 +78,8 @@ export default function BorrowerDashboard() {
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart3 },
     { id: 'forms', label: 'Application Forms', icon: FileText },
-    { id: 'documents', label: 'Document Center', icon: Upload },
+    { id: 'documents', label: 'Upload Documents', icon: Upload },
+    { id: 'submit', label: 'Submit Application', icon: CheckCircle2 },
     { id: 'schedule', label: 'Schedule Meeting', icon: Calendar },
     { id: 'contact', label: 'Loan Officer', icon: User },
     { id: 'profile', label: 'Profile', icon: User },
@@ -213,7 +215,8 @@ export default function BorrowerDashboard() {
                 <h2 className="ml-4 text-xl font-bold text-gray-900">
                   {activeTab === 'overview' ? 'Dashboard Overview' : 
                    activeTab === 'forms' ? 'Application Forms' :
-                   activeTab === 'documents' ? 'Document Center' :
+                   activeTab === 'documents' ? 'Upload Documents' :
+                   activeTab === 'submit' ? 'Submit Application' :
                    activeTab === 'schedule' ? 'Schedule Meeting' :
                    activeTab === 'contact' ? 'Your Loan Officer' :
                    'Profile Settings'}
@@ -244,6 +247,17 @@ export default function BorrowerDashboard() {
             <DocumentUploadSection 
               documents={documents} 
               onDocumentUploaded={fetchDocuments}
+              userProfile={userProfile}
+            />
+          )}
+          {activeTab === 'submit' && (
+            <ApplicationSubmission 
+              documents={documents}
+              userProfile={userProfile}
+              onApplicationSubmitted={() => {
+                fetchApplicationStatus()
+                setActiveTab('overview')
+              }}
             />
           )}
           {activeTab === 'schedule' && <ScheduleSection />}

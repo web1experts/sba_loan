@@ -3,7 +3,7 @@ import { Upload, File, CheckCircle2, AlertCircle, X, FolderOpen } from 'lucide-r
 import { supabase } from '../../supabaseClient'
 import { useAuth } from '../../hooks/useAuth'
 
-export default function DocumentUploadSection({ documents, onDocumentUploaded }) {
+export default function DocumentUploadSection({ documents, onDocumentUploaded, userProfile }) {
   const { user } = useAuth()
   const [uploading, setUploading] = useState({})
 
@@ -29,6 +29,21 @@ export default function DocumentUploadSection({ documents, onDocumentUploaded })
   const totalRequired = documentCategories.length
   const totalUploaded = documents.length
 
+  // Generate folder name in format: firstname_lastname_email_userid
+  const generateFolderName = () => {
+    const firstName = userProfile?.first_name || user?.user_metadata?.first_name || 'user'
+    const lastName = userProfile?.last_name || user?.user_metadata?.last_name || 'unknown'
+    const email = user?.email || 'noemail'
+    const userId = user?.id || 'noid'
+    
+    // Clean and format the components
+    const cleanFirstName = firstName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const cleanLastName = lastName.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const cleanEmail = email.toLowerCase().replace(/[^a-z0-9@.]/g, '')
+    const cleanUserId = userId.replace(/[^a-z0-9]/g, '')
+    
+    return `${cleanFirstName}_${cleanLastName}_${cleanEmail}_${cleanUserId}`
+  }
   const uploadDocument = async (file, category) => {
     if (!user || !file) return
 
@@ -44,7 +59,8 @@ export default function DocumentUploadSection({ documents, onDocumentUploaded })
       // Upload to user-specific folder (required for RLS policy)
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}_${file.name}`
-      const filePath = `${currentUser.id}/${fileName}` // This matches RLS policy: auth.uid() || '/%'
+      const folderName = generateFolderName()
+      const filePath = `${folderName}/${fileName}` // New naming format
 
       console.log('Uploading to user folder:', { filePath, userId: currentUser.id })
 
@@ -151,7 +167,7 @@ export default function DocumentUploadSection({ documents, onDocumentUploaded })
             <FolderOpen className="h-6 w-6 text-blue-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Document Upload Center</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Upload Documents</h2>
             <p className="text-gray-600">Upload your documents for faster processing</p>
           </div>
         </div>
@@ -176,7 +192,7 @@ export default function DocumentUploadSection({ documents, onDocumentUploaded })
       {/* Document Categories */}
       <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg border border-white/30">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-xl font-bold text-gray-900">Document Categories</h3>
+          <h3 className="text-xl font-bold text-gray-900">Upload Documents by Category</h3>
           <p className="text-gray-600">Upload your documents by category</p>
         </div>
 
