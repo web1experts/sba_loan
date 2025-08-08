@@ -54,135 +54,37 @@ export default function AdminDashboard() {
 
   const fetchApplications = async () => {
     try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-      if (authError || !currentUser) {
-        console.error('Admin auth error:', authError)
-        setApplications([])
-        return
-      }
-
-      // Check if user has admin role
-      const userRole = currentUser.user_metadata?.role
-      if (userRole !== 'admin') {
-        console.error('Access denied: User is not admin')
-        setApplications([])
-        return
-      }
-
-      // Use the custom function for better data retrieval
       const { data, error } = await supabase
-        .rpc('get_applications_for_admin')
+        .from('application_status')
+        .select(`
+          *,
+          user_profiles!inner(*)
+        `)
+        .eq('status', 'documents_pending')
+        .order('created_at', { ascending: false })
 
       if (error) throw error
-      
-      // Transform the data to match expected format
-      const transformedData = (data || []).map(app => ({
-        ...app,
-        user_profiles: {
-          first_name: app.user_first_name,
-          last_name: app.user_last_name,
-          email: app.user_email,
-          phone: app.user_phone,
-          company: app.user_company
-        }
-      }))
-      
-      console.log('Fetched applications:', transformedData) // Debug log
-      setApplications(transformedData)
+      setApplications(data || [])
     } catch (error) {
       console.error('Error fetching applications:', error)
-      
-      // Fallback: try direct query if RPC fails
-      try {
-        console.log('Trying fallback query...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            *,
-            user_profiles(*)
-          `)
-          .in('status', ['documents_pending', 'under_review'])
-          .order('created_at', { ascending: false })
-
-        if (fallbackError) {
-          console.error('Fallback query failed:', fallbackError)
-          setApplications([])
-        } else {
-          console.log('Fallback query successful:', fallbackData)
-          setApplications(fallbackData || [])
-        }
-      } catch (fallbackErr) {
-        console.error('Complete failure to fetch applications:', fallbackErr)
-        setApplications([])
-      }
     }
   }
 
   const fetchBorrowers = async () => {
     try {
-      // First verify admin access
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-      if (authError || !currentUser) {
-        console.error('Admin auth error:', authError)
-        setBorrowers([])
-        return
-      }
-
-      // Check if user has admin role
-      const userRole = currentUser.user_metadata?.role
-      if (userRole !== 'admin') {
-        console.error('Access denied: User is not admin')
-        setBorrowers([])
-        return
-      }
-
-      // Use the custom function for better data retrieval
       const { data, error } = await supabase
-        .rpc('get_borrowers_for_admin')
+        .from('application_status')
+        .select(`
+          *,
+          user_profiles!inner(*)
+        `)
+        .eq('status', 'approved')
+        .order('updated_at', { ascending: false })
 
       if (error) throw error
-      
-      // Transform the data to match expected format
-      const transformedData = (data || []).map(borrower => ({
-        ...borrower,
-        user_profiles: {
-          first_name: borrower.user_first_name,
-          last_name: borrower.user_last_name,
-          email: borrower.user_email,
-          phone: borrower.user_phone,
-          company: borrower.user_company
-        }
-      }))
-      
-      console.log('Fetched borrowers:', transformedData) // Debug log
-      setBorrowers(transformedData)
+      setBorrowers(data || [])
     } catch (error) {
       console.error('Error fetching borrowers:', error)
-      
-      // Fallback: try direct query if RPC fails
-      try {
-        console.log('Trying fallback query for borrowers...')
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('application_status')
-          .select(`
-            *,
-            user_profiles(*)
-          `)
-          .eq('status', 'approved')
-          .order('updated_at', { ascending: false })
-
-        if (fallbackError) {
-          console.error('Fallback query failed:', fallbackError)
-          setBorrowers([])
-        } else {
-          console.log('Fallback query successful:', fallbackData)
-          setBorrowers(fallbackData || [])
-        }
-      } catch (fallbackErr) {
-        console.error('Complete failure to fetch borrowers:', fallbackErr)
-        setBorrowers([])
-      }
     }
   }
 
@@ -559,19 +461,12 @@ function OverviewSection({ stats }) {
 }
 
 function ApplicationsSection({ applications, onApprove, selectedApplication, setSelectedApplication }) {
-  console.log('ApplicationsSection received applications:', applications) // Debug log
-  
   if (applications.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-8">
-        <div className="text-center py-12">
-          <FileText className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No pending applications</h3>
-          <p className="mt-1 text-sm text-gray-500">Applications will appear here when submitted by borrowers.</p>
-          <div className="mt-4 text-xs text-gray-400">
-            Looking for applications with status: documents_pending, under_review
-          </div>
-        </div>
+      <div className="text-center py-12">
+        <FileText className="mx-auto h-12 w-12 text-gray-400" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">No pending applications</h3>
+        <p className="mt-1 text-sm text-gray-500">Applications will appear here when submitted by borrowers.</p>
       </div>
     )
   }
@@ -600,9 +495,6 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                   Submitted
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Documents
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -617,9 +509,9 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                       </div>
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">
-                          {application.user_profiles?.first_name || 'Unknown'} {application.user_profiles?.last_name || 'User'}
+                          {application.user_profiles?.first_name} {application.user_profiles?.last_name}
                         </div>
-                        <div className="text-sm text-gray-500">{application.user_profiles?.email || 'No email'}</div>
+                        <div className="text-sm text-gray-500">{application.user_profiles?.email}</div>
                       </div>
                     </div>
                   </td>
@@ -627,44 +519,26 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
                     {application.user_profiles?.company || 'Not specified'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      application.status === 'documents_pending' ? 'bg-yellow-100 text-yellow-800' :
-                      application.status === 'under_review' ? 'bg-blue-100 text-blue-800' :
-                      application.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {application.status === 'documents_pending' ? 'Pending Review' :
-                       application.status === 'under_review' ? 'Under Review' :
-                       application.status === 'approved' ? 'Approved' :
-                       application.status}
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                      Pending Review
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {application.submitted_at ? 
-                      new Date(application.submitted_at).toLocaleDateString() :
-                      new Date(application.created_at).toLocaleDateString()
-                    }
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {application.document_count || 0} docs
+                    {new Date(application.created_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                     <button
                       onClick={() => setSelectedApplication(application)}
                       className="text-blue-600 hover:text-blue-900"
-                      title="View Application"
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    {application.status === 'documents_pending' && (
-                      <button
-                        onClick={() => onApprove(application.id)}
-                        className="text-green-600 hover:text-green-900"
-                        title="Approve Application"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => onApprove(application.id)}
+                      className="text-green-600 hover:text-green-900"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
