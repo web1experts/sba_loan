@@ -65,21 +65,63 @@ export default function AdminDashboard() {
       console.log('All application_status records:', allApps)
       if (allError) console.error('Error fetching all applications:', allError)
 
-      // Now try to get applications with user profiles
-      const { data, error } = await supabase
-        .from('application_status')
-        .select(`
-          *,
-          user_profiles(*)
-        `)
-        .in('status', ['documents_pending', 'under_review', 'submitted'])
-        .order('created_at', { ascending: false })
+      if (!allApps || allApps.length === 0) {
+        console.log('No applications found')
+        setApplications([])
+        return
+      }
 
-      console.log('Applications with profiles:', data)
-      if (error) {
-        console.error('Error fetching applications with profiles:', error)
-        // Fallback: use the basic data without profiles
-        setApplications(allApps || [])
+      // Get unique user IDs from applications
+      const userIds = [...new Set(allApps.map(app => app.user_id).filter(Boolean))]
+      console.log('User IDs from applications:', userIds)
+
+      // Fetch user profiles for these users
+      const { data: profiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', userIds)
+
+      console.log('User profiles fetched:', profiles)
+      if (profilesError) {
+        console.error('Error fetching user profiles:', profilesError)
+      }
+
+      // Also try to get user data from auth.users if profiles are missing
+      const { data: authUsers, error: authError } = await supabase
+        .from('application_status')
+        .select('user_id')
+        .in('id', allApps.map(app => app.id))
+
+      console.log('Auth users check:', authUsers)
+      if (authError) {
+        console.error('Auth users error:', authError)
+      }
+
+      // Create a map of user profiles for quick lookup
+      const profileMap = {}
+      if (profiles) {
+        profiles.forEach(profile => {
+          profileMap[profile.id] = profile
+        })
+      }
+
+      // Merge applications with user profile data
+      const applicationsWithProfiles = allApps.map(app => {
+        const userProfile = profileMap[app.user_id]
+        return {
+          ...app,
+          user_profiles: userProfile || null
+        }
+      })
+
+      console.log('Final applications with profiles:', applicationsWithProfiles)
+      setApplications(applicationsWithProfiles)
+
+    } catch (error) {
+      console.error('Error fetching applications:', error)
+      setApplications([])
+    }
+  }
         return
       }
       
@@ -311,11 +353,27 @@ export default function AdminDashboard() {
         {/* Sidebar Header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200/50 bg-gradient-to-r from-gray-700 to-gray-900 flex-shrink-0">
           <div className="flex items-center space-x-3">
+  console.log('ApplicationDetailsModal received application:', application)
+  
+  if (!application) {
+    return null
+  }
+
+  const userProfile = application.user_profiles
+  const displayName = userProfile ? 
+    `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Unknown User' :
+    'Unknown User'
+  const displayEmail = userProfile?.email || 'No email available'
+  const displayCompany = userProfile?.company || 'Not specified'
+  const displayPhone = userProfile?.phone || 'Not provided'
+
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
               <BarChart3 className="h-4 w-4 text-white" />
             </div>
             <h1 className="text-lg font-bold text-white">Admin Panel</h1>
-          </div>
+          <h3 className="text-xl font-bold text-white">
+            Application Details - {displayName}
+          </h3>
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10"
@@ -497,15 +555,15 @@ function OverviewSection({ stats }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat) => {
           const Icon = stat.icon
-          return (
-            <div key={stat.name} className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-white/30">
+                  <p className="text-gray-900">{displayEmail}</p>
+                  <p className="text-gray-900">{displayName}</p>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">{stat.name}</p>
+                  <p className="text-gray-900">{displayPhone}</p>
                   <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 </div>
                 <div className={`w-12 h-12 bg-gradient-to-br ${stat.bgColor} rounded-xl flex items-center justify-center shadow-md`}>
-                  <Icon className={`w-6 h-6 bg-gradient-to-br ${stat.color} bg-clip-text text-transparent`} />
+                  <p className="text-gray-900">{displayCompany}</p>
                 </div>
               </div>
             </div>
@@ -565,6 +623,14 @@ function ApplicationsSection({ applications, onApprove, selectedApplication, set
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {applications.map((application) => (
+                console.log('Rendering application:', application)
+                const userProfile = application.user_profiles
+                const displayName = userProfile ? 
+                  `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Unknown User' :
+                  'Unknown User'
+                const displayEmail = userProfile?.email || 'No email available'
+                const displayCompany = userProfile?.company || 'Not specified'
+                
                 <tr key={application.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -822,10 +888,10 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {meeting.user_profiles?.first_name || 'Unknown'} {meeting.user_profiles?.last_name || 'User'}
+                            {displayName}
                           </div>
                           <div className="text-sm text-gray-500">{meeting.user_profiles?.email || 'No email'}</div>
-                        </div>
+                            {displayEmail}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -853,7 +919,7 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {meeting.purpose}
+                      {displayCompany}
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm text-gray-900 max-w-xs truncate" title={meeting.notes}>
@@ -883,6 +949,8 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                             className="text-red-600 hover:text-red-900 px-2 py-1 rounded hover:bg-red-50"
                           >
                             Cancel
+                        title="View Application Details"
+                        title="Approve Application"
                           </button>
                         </>
                       )}
