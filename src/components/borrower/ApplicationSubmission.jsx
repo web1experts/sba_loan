@@ -32,7 +32,7 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
         throw new Error('Authentication required. Please log in again.')
       }
 
-      // Use the complete submission function
+      // Use the application submission function
       const { data, error } = await supabase.rpc('submit_application_for_review', {
         p_user_id: currentUser.id,
         p_document_count: documents.length
