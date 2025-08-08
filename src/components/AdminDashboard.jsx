@@ -90,41 +90,30 @@ export default function AdminDashboard() {
 
   const fetchMeetings = async () => {
     try {
-      // First, let's check if we can fetch meetings at all
-      const { data: testData, error: testError } = await supabase
-        .from('meetings')
-        .select('count')
-        .single()
-      
-      console.log('Meeting count test:', testData, testError)
-
+      // Use the custom function for better data retrieval
       const { data, error } = await supabase
-        .from('meetings')
-        .select(`
-          *,
-          user_profiles(*)
-        `)
-        .order('created_at', { ascending: false })
+        .rpc('get_meetings_for_admin')
 
       if (error) throw error
       console.log('Fetched meetings:', data) // Debug log
-      setMeetings(data || [])
+      
+      // Transform the data to match expected format
+      const transformedData = (data || []).map(meeting => ({
+        ...meeting,
+        user_profiles: {
+          first_name: meeting.user_first_name,
+          last_name: meeting.user_last_name,
+          email: meeting.user_email,
+          phone: meeting.user_phone,
+          company: meeting.user_company
+        }
+      }))
+      
+      setMeetings(transformedData)
     } catch (error) {
       console.error('Error fetching meetings:', error)
-      // Try fetching without user_profiles join as fallback
-      try {
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('meetings')
-          .select('*')
-          .order('created_at', { ascending: false })
-        
-        if (!fallbackError && fallbackData) {
-          console.log('Fallback meetings data:', fallbackData)
-          setMeetings(fallbackData)
-        }
-      } catch (fallbackErr) {
-        console.error('Fallback fetch also failed:', fallbackErr)
-      }
+      // Set empty array on error
+      setMeetings([])
     }
   }
 
