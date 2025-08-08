@@ -42,29 +42,10 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
     setSubmitting(true)
 
     try {
-      // Get current authenticated user to ensure we have the latest auth state
-      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
-      if (authError || !currentUser) {
-        throw new Error('Authentication required. Please log in again.')
-      }
-
-      // Generate folder name
-      const folderName = generateFolderName()
-
-      // Prepare borrower name
-      const firstName = userProfile?.first_name || currentUser.user_metadata?.first_name || ''
-      const lastName = userProfile?.last_name || currentUser.user_metadata?.last_name || ''
-      const borrowerName = `${firstName} ${lastName}`.trim() || 'Unknown'
-
-      // Submit application using the function
-      const { data, error } = await supabase.rpc('submit_borrower_application', {
-        p_user_id: currentUser.id,
-        p_borrower_name: borrowerName,
-        p_borrower_email: currentUser.email,
-        p_phone: userProfile?.phone || '',
-        p_company: userProfile?.company || '',
-        p_document_folder: folderName,
-        p_document_count: documents.length
+      // Submit application using simple function
+      const { error } = await supabase.rpc('submit_application', {
+        p_user_id: user.id,
+        p_notes: `Documents uploaded: ${documents.length}, Categories: ${uploadedCategories.join(', ')}`
       })
 
       if (error) {
