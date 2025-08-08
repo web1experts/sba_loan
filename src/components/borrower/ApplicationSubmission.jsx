@@ -48,46 +48,29 @@ export default function ApplicationSubmission({ documents, userProfile, onApplic
         throw new Error('Authentication required. Please log in again.')
       }
 
-      console.log('Submitting application for user:', currentUser.id)
-      console.log('Document count:', documents.length)
-      console.log('User profile:', userProfile)
-
       // Generate folder name
       const folderName = generateFolderName()
-      console.log('Generated folder name:', folderName)
 
       // Prepare borrower name
       const firstName = userProfile?.first_name || currentUser.user_metadata?.first_name || ''
       const lastName = userProfile?.last_name || currentUser.user_metadata?.last_name || ''
       const borrowerName = `${firstName} ${lastName}`.trim() || 'Unknown'
 
-      console.log('Submitting application with data:', {
-        borrowerName,
-        email: currentUser.email,
-        phone: userProfile?.phone || '',
-        company: userProfile?.company || '',
-        folderName,
-        documentCount: documents.length,
-        categories: uploadedCategories
-      })
-
-      // Submit application using the simple function
-      const { data, error } = await supabase.rpc('submit_application', {
+      // Submit application using the function
+      const { data, error } = await supabase.rpc('submit_borrower_application', {
+        p_user_id: currentUser.id,
         p_borrower_name: borrowerName,
         p_borrower_email: currentUser.email,
         p_phone: userProfile?.phone || '',
         p_company: userProfile?.company || '',
         p_document_folder: folderName,
-        p_document_count: documents.length,
-        p_document_categories: uploadedCategories
+        p_document_count: documents.length
       })
 
       if (error) {
-        console.error('Application submission error:', error)
         throw new Error(`Failed to submit application: ${error.message}`)
       }
 
-      console.log('Application submitted successfully:', data)
       setSubmitted(true)
       
       // Show success for 3 seconds then redirect
