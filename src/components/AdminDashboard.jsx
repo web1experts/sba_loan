@@ -241,7 +241,10 @@ export default function AdminDashboard() {
 }
 
 // Overview Section Component
-function OverviewSection({ borrowers, referralLeads, teamMembers, applications, meetings }) {
+function OverviewSection({ data }) {
+  const recentApplications = data.applications.slice(0, 5)
+  const upcomingMeetings = data.meetings.filter(m => new Date(m.meeting_date) >= new Date()).slice(0, 5)
+
   const stats = [
     {
       name: 'Total Applications',
@@ -252,7 +255,7 @@ function OverviewSection({ borrowers, referralLeads, teamMembers, applications, 
     },
     {
       name: 'Pending Applications',
-      value: applications.filter(app => app.status === 'documents_pending').length,
+      value: data.applications.filter(app => app.status === 'documents_pending').length,
       icon: FileText,
       color: 'from-yellow-500 to-orange-600',
       bgColor: 'from-yellow-50 to-orange-50'
@@ -277,11 +280,15 @@ function OverviewSection({ borrowers, referralLeads, teamMembers, applications, 
       icon: Building2,
       color: 'from-orange-500 to-red-600',
       bgColor: 'from-orange-50 to-red-50'
+    },
+    {
+      name: 'Scheduled Meetings',
+      value: data.meetings.filter(m => m.status === 'scheduled').length,
+      icon: Calendar,
+      color: 'from-purple-500 to-violet-600',
+      bgColor: 'from-purple-50 to-violet-50'
     }
   ]
-      name: 'Scheduled Meetings',
-      value: meetings.filter(m => m.status === 'scheduled').length,
-      icon: Calendar,
 
   return (
     <div className="space-y-8">
