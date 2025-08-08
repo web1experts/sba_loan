@@ -86,6 +86,9 @@ export function useAuth() {
       
       // Clear sessionStorage as well
       sessionStorage.clear()
+      
+      // Force redirect to landing page after logout
+      window.location.href = '/'
     }
     
     return { error }

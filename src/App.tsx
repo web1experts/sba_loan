@@ -33,8 +33,7 @@ function App() {
         <Route path="/" element={user ? <DashboardRedirect role={userRole} /> : <LandingPage />} />
         <Route path="/connection-status" element={<ConnectionStatus />} />
         <Route path="/setup-users" element={<TestUserSetup />} />
-        <Route path="/borrower" element={user ? <DashboardRedirect role={userRole} /> : <SignUp />} />
-        <Route path="/borrower/login" element={user ? <DashboardRedirect role={userRole} /> : <Login />} />
+        <Route path="/admin-login" element={user ? <DashboardRedirect role={userRole} /> : <AdminLogin />} />
 
         {/* Protected Routes */}
         <Route 

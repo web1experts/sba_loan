@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children, allowedRoles = [] }) {
   }
 
   if (!user) {
-    return <Navigate to="/borrower/login" replace />
+    return <Navigate to="/" replace />
   }
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
