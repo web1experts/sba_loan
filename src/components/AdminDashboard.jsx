@@ -20,9 +20,13 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [applications, setApplications] = useState([])
+  const [meetings, setMeetings] = useState([])
 
   useEffect(() => {
     fetchAllData()
+    fetchApplications()
+    fetchMeetings()
   }, [])
 
   const fetchAllData = async () => {
@@ -49,6 +53,32 @@ export default function AdminDashboard() {
       console.error('Error fetching data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchApplications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('application_status')
+        .select('*, user_profiles(first_name, last_name, email, company)')
+      
+      if (error) throw error
+      setApplications(data || [])
+    } catch (error) {
+      console.error('Error fetching applications:', error)
+    }
+  }
+
+  const fetchMeetings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('meetings')
+        .select('*, user_profiles(first_name, last_name, email)')
+      
+      if (error) throw error
+      setMeetings(data || [])
+    } catch (error) {
+      console.error('Error fetching meetings:', error)
     }
   }
 
