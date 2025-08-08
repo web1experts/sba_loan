@@ -90,6 +90,22 @@ export default function AdminDashboard() {
 
   const fetchMeetings = async () => {
     try {
+      // First verify admin access
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !currentUser) {
+        console.error('Admin auth error:', authError)
+        setMeetings([])
+        return
+      }
+
+      // Check if user has admin role
+      const userRole = currentUser.user_metadata?.role
+      if (userRole !== 'admin') {
+        console.error('Access denied: User is not admin')
+        setMeetings([])
+        return
+      }
+
       // Use the custom function for better data retrieval
       const { data, error } = await supabase
         .rpc('get_meetings_for_admin')
@@ -112,8 +128,29 @@ export default function AdminDashboard() {
       setMeetings(transformedData)
     } catch (error) {
       console.error('Error fetching meetings:', error)
-      // Set empty array on error
-      setMeetings([])
+      
+      // Fallback: try direct query if RPC fails
+      try {
+        console.log('Trying fallback query...')
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('meetings')
+          .select(`
+            *,
+            user_profiles(*)
+          `)
+          .order('created_at', { ascending: false })
+
+        if (fallbackError) {
+          console.error('Fallback query failed:', fallbackError)
+          setMeetings([])
+        } else {
+          console.log('Fallback query successful:', fallbackData)
+          setMeetings(fallbackData || [])
+        }
+      } catch (fallbackErr) {
+        console.error('Complete failure to fetch meetings:', fallbackErr)
+        setMeetings([])
+      }
     }
   }
 

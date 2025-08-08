@@ -47,8 +47,14 @@ export default function ScheduleSection() {
     setLoading(true)
 
     try {
+      // Get current user to ensure we have the latest auth state
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+      if (authError || !currentUser) {
+        throw new Error('Authentication required. Please log in again.')
+      }
+
       const meetingData = {
-        user_id: user.id,
+        user_id: currentUser.id,
         meeting_date: activeTab === 'callback' ? new Date().toISOString().split('T')[0] : selectedDate || new Date().toISOString().split('T')[0],
         meeting_time: activeTab === 'callback' ? (preferredTime || 'ASAP') : selectedTime,
         meeting_type: activeTab === 'callback' ? 'callback' : 'in-person',
@@ -57,6 +63,7 @@ export default function ScheduleSection() {
         contact_info: activeTab === 'callback' ? phoneNumber : '',
         status: 'scheduled',
         created_at: new Date().toISOString()
+        updated_at: new Date().toISOString()
       }
 
       console.log('Submitting meeting data:', meetingData) // Debug log
@@ -67,7 +74,13 @@ export default function ScheduleSection() {
 
       if (error) {
         console.error('Database error:', error)
-        throw new Error(`Database error: ${error.message}`)
+        if (error.message.includes('permission denied')) {
+          throw new Error('Permission denied. Please ensure you are logged in and try again.')
+        } else if (error.message.includes('violates check constraint')) {
+          throw new Error('Invalid meeting data. Please check your inputs and try again.')
+        } else {
+          throw new Error(`Database error: ${error.message}`)
+        }
       }
 
       console.log('Meeting saved successfully') // Debug log
