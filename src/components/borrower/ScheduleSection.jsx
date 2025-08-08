@@ -49,7 +49,7 @@ export default function ScheduleSection() {
     try {
       const meetingData = {
         user_id: user.id,
-        meeting_date: activeTab === 'callback' ? new Date().toISOString().split('T')[0] : selectedDate,
+        meeting_date: activeTab === 'callback' ? new Date().toISOString().split('T')[0] : selectedDate || new Date().toISOString().split('T')[0],
         meeting_time: activeTab === 'callback' ? (preferredTime || 'ASAP') : selectedTime,
         meeting_type: activeTab === 'callback' ? 'callback' : 'in-person',
         purpose: purpose,
@@ -58,6 +58,8 @@ export default function ScheduleSection() {
         status: 'scheduled',
         created_at: new Date().toISOString()
       }
+
+      console.log('Submitting meeting data:', meetingData) // Debug log
 
       const { error } = await supabase
         .from('meetings')
@@ -68,6 +70,7 @@ export default function ScheduleSection() {
         throw new Error(`Database error: ${error.message}`)
       }
 
+      console.log('Meeting saved successfully') // Debug log
       setIsScheduled(true)
       
       setTimeout(() => {

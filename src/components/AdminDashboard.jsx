@@ -18,6 +18,22 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchAllData()
+    
+    // Set up real-time subscription for meetings
+    const meetingsSubscription = supabase
+      .channel('meetings_changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'meetings' },
+        (payload) => {
+          console.log('Meeting change detected:', payload)
+          fetchMeetings() // Refresh meetings when changes occur
+        }
+      )
+      .subscribe()
+
+    return () => {
+      meetingsSubscription.unsubscribe()
+    }
   }, [])
 
   const fetchAllData = async () => {
@@ -74,18 +90,41 @@ export default function AdminDashboard() {
 
   const fetchMeetings = async () => {
     try {
+      // First, let's check if we can fetch meetings at all
+      const { data: testData, error: testError } = await supabase
+        .from('meetings')
+        .select('count')
+        .single()
+      
+      console.log('Meeting count test:', testData, testError)
+
       const { data, error } = await supabase
         .from('meetings')
         .select(`
           *,
-          user_profiles!inner(*)
+          user_profiles(*)
         `)
-        .order('meeting_date', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (error) throw error
+      console.log('Fetched meetings:', data) // Debug log
       setMeetings(data || [])
     } catch (error) {
       console.error('Error fetching meetings:', error)
+      // Try fetching without user_profiles join as fallback
+      try {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('meetings')
+          .select('*')
+          .order('created_at', { ascending: false })
+        
+        if (!fallbackError && fallbackData) {
+          console.log('Fallback meetings data:', fallbackData)
+          setMeetings(fallbackData)
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback fetch also failed:', fallbackErr)
+      }
     }
   }
 
@@ -680,9 +719,9 @@ function MeetingsSection({ meetings, onUpdateStatus }) {
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {meeting.user_profiles?.first_name} {meeting.user_profiles?.last_name}
+                            {meeting.user_profiles?.first_name || 'Unknown'} {meeting.user_profiles?.last_name || 'User'}
                           </div>
-                          <div className="text-sm text-gray-500">{meeting.user_profiles?.email}</div>
+                          <div className="text-sm text-gray-500">{meeting.user_profiles?.email || 'No email'}</div>
                         </div>
                       </div>
                     </td>
